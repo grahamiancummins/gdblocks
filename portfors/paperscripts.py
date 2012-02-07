@@ -20,6 +20,7 @@
 
 import timingUI as ti
 import selectUI as si
+import tests
 
 def allstims(cdoc):
 	stims = set()
@@ -28,3 +29,6 @@ def allstims(cdoc):
 		l = [d[s]['file'] for s in d]
 		stims = stims.union(l)
 	return stims
+
+def artdoc():
+	pass

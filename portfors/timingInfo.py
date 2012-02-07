@@ -273,7 +273,9 @@ class CMI(Transform):
 		t = _tup2tree(pars['tree'])
 		part = t.cut(min(pars['nclust'], len(t)))
 		io = gd.Doc({'stims':pars['stims'], 'evts':part})
-		if pars['shuff']:
+		if type(pars['shuff']) in [str, unicode]:
+			mi, ie, oe = minf(io, pars['shuff'], True)
+		elif pars['shuff']:
 			mi, ie, oe, er = minf_db(io, 'direct', ('shuffle', pars['shuff']))
 			out['estrange'] = er
 		else:

@@ -962,6 +962,30 @@ def jit_scan(d, jit=QR, n=5,
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
 
+def jit_alt_mi(d, jit=QR, n=5, 
+             dmeth='ed_ist', q=None, nclust=55, mim='pt', debias=()):
+	"""
+	d: CellExp, jit: [ of x, n: i, windows: WinSpec, dmeth:DistMode, 
+		q: DistQ, nclust: i, mim: s ->
+		Scan
+	
+	as jitscan, but uses one of the pyentropy MI calculations (Which is 
+	only useful for making a figure to show that they don't work right). 
+	mim is the name of the pyentropy mutual information method.
+	
+	"""
+	conds = ["->" + s for s in d.keys(0, 'cond')]
+	tfs = [BP + tn for tn in ['jit','dm','grpdm','mi']]
+	rs = [{'jit':jit},{'io':conds}, {}, {}]
+	pars = [{'n':n},{'dmeth':dmeth, 'q':q},
+	        {'nclust':nclust, 'stims':''},{'mim':mim, 'debias':debias}]
+	forward = {2:{'io':(1, 'io', lambda x:'__'+x[2:])}, 
+	           3:{'io':(1, 'io','')}}
+	out = {2:'->io'}
+	reentry = {3:[0]}
+	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
+	return scan_with_colate(scan, d, 'jit')
+
 def win_jit_scan(d, jit=QR, n=3, windows=((0, STIMDUR),),
              dmeth='ed_ist', q=None, nclust=55, shuff=3):
 	"""
@@ -1010,7 +1034,7 @@ def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5):
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
 
-def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None):
+def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None, conds=None):
 	'''
 	d: CellExp, dmeth:DistMode, shuff:i, mclust: i, q:DistQ, serv:Server ->
 		Scan
@@ -1033,7 +1057,11 @@ def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None):
 	scan.
 	
 	'''
-	conds = ["->cond1", "->cond2"]
+	if not conds:
+		conds = ["cond1", "cond2"]
+	elif conds == 'all':
+		conds = d.keys(0, 'cond')
+	conds = ["->" + c for c in conds]
 	#mclust = min([mclust]+ [len(d[k[2:]+'.evts']) for k in conds])
 	tfs = [BP + tn for tn in ['dm','dmtree','cmi']]
 	rs = [{'io':conds}, {}, {'nclust':range(2,mclust)}]
