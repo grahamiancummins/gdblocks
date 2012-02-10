@@ -202,15 +202,9 @@ def minf_db(cond, method='direct', debias =('shuffle', 10)):
 			miv.append(sc)
 		miv = np.array(miv)
 		se = se - miv.mean()
-		miv = mi - miv
-		mi = miv.mean()
-		er = (miv.max()-mi, mi-miv.min())
+		mi = list(mi - miv)
 	else:
-		mima = mi
-		mimi = mi
+		mi = []
 		for meth in debias:
-			m = MIFUNCS[meth](cond)[0]
-			mima = max(mima, m)
-			mimi = min(mimi, m)
-			er = (mima -mi, mi - mimi)
-	return (mi, se, oe, er)
+			mi.append(MIFUNCS[meth](cond)[0])
+	return (mi, se, oe)

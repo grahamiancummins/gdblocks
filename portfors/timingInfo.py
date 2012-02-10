@@ -275,9 +275,9 @@ class CMI(Transform):
 		io = gd.Doc({'stims':pars['stims'], 'evts':part})
 		if type(pars['shuff']) in [str, unicode]:
 			mi, ie, oe = minf(io, pars['shuff'], True)
+			mi = [mi]
 		elif pars['shuff']:
-			mi, ie, oe, er = minf_db(io, 'direct', ('shuffle', pars['shuff']))
-			out['estrange'] = er
+			mi, ie, oe = minf_db(io, 'direct', ('shuffle', pars['shuff']))
 		else:
 			mi, ie, oe = minf(io, 'direct', True)
 		out['stiment'] = ie
@@ -297,10 +297,10 @@ class MI(Transform):
 	def run(self, pars, out, messages):
 		db = pars['debias']
 		if db:
-			mi, ie, oe, er = minf_db(pars['io'], pars['mim'], db)
-			out['estrange'] = er
+			mi, ie, oe = minf_db(pars['io'], pars['mim'], db)
 		else:
 			mi, ie, oe = minf(pars['io'], pars['mim'], True)
+			mi = [mi]
 		out['stiment'] = ie
 		out['respent'] = oe
 		out['mi'] = mi
@@ -321,11 +321,7 @@ class Colate(Transform):
 			m = {}
 			for k in sc:
 				x = r[k]['_params'][xvar]
-				m[x] = [r[k][v] for v in ['mi', 'stiment']]
-				if r[k]['estrange']:
-					m[x].extend(list(r[k]['estrange']))
-				else:
-					m[x].extend([0.0, 0.0])
+				m[x] = r[k]['mi'] + [r[k]['stiment']]
 			out[cond]['x'] = np.array(sorted(m))
 			out[cond]['y'] = np.array([m[i] for i in out[cond]['x']])
 

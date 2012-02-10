@@ -127,7 +127,6 @@ contains every key in d that starts with the string "cond".
 
 """
 
-
 from __future__ import print_function, unicode_literals
 
 import gicdat.doc as gd
@@ -222,14 +221,6 @@ TEST = [5, 8,14,15,16, 19,20,32,33,35,39, 40, 42, 44, 45, 48,
 GOOD = [8, 32, 33, 35, 50, 51, 52, 55, 57, 58]
 
 STIMDUR = 143.856
-
-def seq_eval(scan, d):
-	if SERVER == "TEST":
-		return gd.Doc()
-	elif SERVER:
-		return gdjob.distribute_sequence(scan, d)
-	else:
-		return gdjob.do_sequence(scan, d)
 
 def _nrs_rt(c):
 	s = set(c['stims'])
@@ -905,7 +896,7 @@ def estMI(cell, combine= 0, jit=0, jitsd=5000, win=( (0, STIMDUR),),
 	if js:
 		st = len(js)-1
 		pr = [-1] + range(st)
-	for c in ['cond1', 'cond2']:	
+	for c in cell.keys(0, 'cond'):
 		pr.append(st)
 		js.append(gdjob.Job(
 		    BP+'dm', {'io':'->%s' % c, 'dmeth':dmeth, 'q':q}))
@@ -921,7 +912,8 @@ def estMI(cell, combine= 0, jit=0, jitsd=5000, win=( (0, STIMDUR),),
 		              'debias':midebias}))
 		ret.append(len(js)-1)
 	#ret = range(len(js))
-	return seq_eval((js, gdjob.prlists(pr), ret), cell)
+	seq = (js, gdjob.prlists(pr), ret)
+	return gdjob.do_sequence(seq, cell)
 
 def scan_with_colate(scan, d, xvar='nclust'):
 	scan = gdseq.seq2doc(scan)
@@ -934,8 +926,17 @@ def scan_with_colate(scan, d, xvar='nclust'):
 	else:
 		return scan	
 
-def jit_scan(d, jit=QR, n=5, 
-             dmeth='ed_ist', q=None, nclust=55, shuff=5):
+def getconds(d, conds):
+	if not conds:
+		if d:
+			conds = d.keys(0, 'cond')
+		else:
+			conds = ["cond1", "cond2"]
+	return ["->" + c for c in conds]	
+
+
+def jit_scan(d, jit=QR,dmeth='ed_ist', q=None, 
+             nclust=55, shuff=5, mim='direct', conds=None):
 	"""
 	d: CellExp, jit: [ of x, n: i, windows: WinSpec, dmeth:DistMode, 
 		q: DistQ, nclust: i, shuff: i ->
@@ -946,15 +947,22 @@ def jit_scan(d, jit=QR, n=5,
 	to tin.jit to construct jittered documents (n is the number of jittered
 	repeats to use). dmeth and q are passed to tin.dm to control caluculation of
 	a distance matrix. This is grouped by tree clustering into nclust clusters
-	(by tin.grpdm), and MI is evaluated using tin.mi with debias parameter
-	('shuffle', shuff).
+	(by tin.grpdm), and MI is evaluated using tin.mi with the specified mutual
+	information method "mim". If shuff is non-zero, it also uses the debias
+	parameter ('shuffle', shuff) (which forces mim='direct').
 	
 	"""
-	conds = ["->cond1", "->cond2"]
+	conds = getconds(d, conds)
 	tfs = [BP + tn for tn in ['jit','dm','grpdm','mi']]
 	rs = [{'jit':jit},{'io':conds}, {}, {}]
-	pars = [{'n':n},{'dmeth':dmeth, 'q':q},
-	        {'nclust':nclust, 'stims':''},{'debias':('shuffle',shuff)}]
+	if shuff:
+		mim = 'direct'
+		db = ('shuffle', shuff)
+	else:
+		db = ()	
+	pars = [{'n':1},{'dmeth':dmeth, 'q':q},
+	        {'nclust':nclust, 'stims':''},
+	        {'mim':mim, 'debias':db}]
 	forward = {2:{'io':(1, 'io', lambda x:'__'+x[2:])}, 
 	           3:{'io':(1, 'io','')}}
 	out = {2:'->io'}
@@ -962,46 +970,27 @@ def jit_scan(d, jit=QR, n=5,
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
 
-def jit_alt_mi(d, jit=QR, n=5, 
-             dmeth='ed_ist', q=None, nclust=55, mim='pt', debias=()):
-	"""
-	d: CellExp, jit: [ of x, n: i, windows: WinSpec, dmeth:DistMode, 
-		q: DistQ, nclust: i, mim: s ->
-		Scan
-	
-	as jitscan, but uses one of the pyentropy MI calculations (Which is 
-	only useful for making a figure to show that they don't work right). 
-	mim is the name of the pyentropy mutual information method.
-	
-	"""
-	conds = ["->" + s for s in d.keys(0, 'cond')]
-	tfs = [BP + tn for tn in ['jit','dm','grpdm','mi']]
-	rs = [{'jit':jit},{'io':conds}, {}, {}]
-	pars = [{'n':n},{'dmeth':dmeth, 'q':q},
-	        {'nclust':nclust, 'stims':''},{'mim':mim, 'debias':debias}]
-	forward = {2:{'io':(1, 'io', lambda x:'__'+x[2:])}, 
-	           3:{'io':(1, 'io','')}}
-	out = {2:'->io'}
-	reentry = {3:[0]}
-	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
-	return scan_with_colate(scan, d, 'jit')
 
-def win_jit_scan(d, jit=QR, n=3, windows=((0, STIMDUR),),
-             dmeth='ed_ist', q=None, nclust=55, shuff=3):
+def win_jit_scan(d, jit=QR, windows=((0, STIMDUR),),
+             dmeth='ed_ist', q=None, nclust=55, shuff=3, 
+             mim='direct', conds=None):
 	"""
 	as jit_scan, with windows: WinSpec
-	
 	
 	Very similar to jit_scan, except that between the transforms jit and dm, 
 	also runs the transform tin.win with parameter "windows" to window the 
 	responses.
 	
 	"""
-	conds = ["->cond1", "->cond2"]
-	#conds = ["->"+k for k in d.keys(0, 'cond')] 
+	if shuff:
+		mim = 'direct'
+		db = ('shuffle', shuff)
+	else:
+		db = ()		
+	conds = getconds(d, conds)
 	tfs = [BP + tn for tn in ['jit','win', 'dm','grpdm','mi']]
 	rs = [{'jit':jit},{}, {'io':conds}, {}, {}]
-	pars = [{'n':n},{'windows':windows}, {'dmeth':dmeth, 'q':q},
+	pars = [{'n':1},{'windows':windows}, {'dmeth':dmeth, 'q':q},
 	        {'nclust':nclust, 'stims':''},{'debias':('shuffle',shuff)}]
 	forward = {3:{'io':(2, 'io', lambda x:'__'+x[2:])}, 
 	           4:{'io':(2, 'io','')}}
@@ -1010,7 +999,7 @@ def win_jit_scan(d, jit=QR, n=3, windows=((0, STIMDUR),),
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
 
-def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5):
+def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5, conds=None):
 	"""
 	d: CellExp, qr: [ of DistQ, dmeth:DistMode, shuff:i, 
 		mclust: i, serv:Server ->
@@ -1022,7 +1011,7 @@ def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5):
 	calculate mutual information (using direct ('shuffle', shuff))
 
 	"""
-	conds = ["->cond1", "->cond2"]
+	conds = getconds(d, conds)
 	tfs = [BP + tn for tn in ['dm','grpdm','mi']]
 	rs = [{'io':conds, 'q':qr}, {}, {}]
 	pars = [{'dmeth':dmeth},{'nclust':nclust, 'stims':''},
@@ -1034,7 +1023,8 @@ def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5):
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
 
-def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None, conds=None):
+def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, 
+               q=None, conds=None):
 	'''
 	d: CellExp, dmeth:DistMode, shuff:i, mclust: i, q:DistQ, serv:Server ->
 		Scan
@@ -1057,11 +1047,7 @@ def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None, conds=None):
 	scan.
 	
 	'''
-	if not conds:
-		conds = ["cond1", "cond2"]
-	elif conds == 'all':
-		conds = d.keys(0, 'cond')
-	conds = ["->" + c for c in conds]
+	conds = getconds(d,conds)
 	#mclust = min([mclust]+ [len(d[k[2:]+'.evts']) for k in conds])
 	tfs = [BP + tn for tn in ['dm','dmtree','cmi']]
 	rs = [{'io':conds}, {}, {'nclust':range(2,mclust)}]
@@ -1072,7 +1058,7 @@ def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, q=None, conds=None):
 	return scan_with_colate(scan, d, 'nclust')
 
 ##Scan output commands
-def bsep(s, cp = 'cond1', cn = None):
+def bsep(s, cp = 'cond1', cn = None, normalize=False, mahal=False):
 	'''
 	s: Scan, cp:CondName(s), cn CondName(s), -> (x, x) 
 	
@@ -1081,13 +1067,24 @@ def bsep(s, cp = 'cond1', cn = None):
 	cn is None, use the absolute value of cp
 	
 	returns (the x value, the value of the difference found there)
+
 	
 	'''
-	mi = s[cp]['y'][:,0]
+	mi = np.array(s[cp]['y'])[:,:-1]
+	if normalize:
+		mi = mi/np.array(s[cp]['y'])[:,-1:]
+	midif = mi.mean(1)
 	if cn:
-		mi = mi - s[cn]['y'][:,0]
-	ms = np.argmax(mi)
-	return (s[cp]['x'][ms], mi[ms])
+		mi_ref = np.array(s[cn]['y'])[:,:-1]
+		if normalize:
+			mi_ref = mi_ref/np.array(s[cn]['y'])[:,-1:]
+		midif = midif - mi_ref.mean(1)
+		if mahal:
+			midif = midif/ (mi.std(1) + mi_ref.std(1))
+	elif mahal:
+		midif = midif/mi.std(1)
+	ms = np.argmax(midif)
+	return (s[cp]['x'][ms], midif[ms])
 
 def fusescans(los, names):
 	'''
@@ -1106,15 +1103,15 @@ def fusescans(los, names):
 
 def _errbar_scan(sk, normalize=False, perspike = False, **kwargs):
 	xvals = sk['x']
-	mi = sk['y'][:,0]
-	err = sk['y'][:,2:]
+	mi = np.array(sk['y'])[:,:-1]
 	if normalize:
-		mi = mi/yvals[:,1]
+		mi = mi/np.array(sk['y'])[:,-1:]
 	if perspike:
 		nn = sk['nspikes']/float(sk['npres'])
 		mi = mi/nn
-		err = err/nn
-	plt.errorbar(xvals, mi, yerr=(err[:,0], err[:,1]), **kwargs)
+	err = mi.std(1)
+	mi = mi.mean(1)
+	plt.errorbar(xvals, mi, yerr=err, **kwargs)
 	return mi
 
 def _mark_bsep(s):
@@ -1270,11 +1267,9 @@ def _measure_sep(cd):
 	cd['best_nclust'] = int(round(float(avbnc)/len(conds)))
 	return cd
 	
-def treebsep(cell, dmeth='ed_ist', shuff=5, mclust=80, 
-             q= None, winlen=200):
+def treebsep(cell, dmeth='ed_ist', shuff=5, mclust=80, q= None):
 	'''
-	cell: CellExp, dmeth:DistMode, q: DistQ, shuff:i, winlen: x 
-		mclust: i->  
+	cell: CellExp, dmeth:DistMode, q: DistQ, shuff:i, mclust: i->  
 		d: 
 		{scan: Scan, KeysOf(cell, 'cond'): D}
 		where D: {best_MI_sep: x (a value of mutual information difference)
