@@ -152,7 +152,9 @@ MDIR = os.path.split(__file__)[0]
 STIMDIR = os.path.join(MDIR, 'stims')
 CDF = os.path.join(MDIR, 'cells.gic')
 OUT = os.path.join(MDIR, 'measurements.csv')
-QR= [1] + range(1000, 10000, 2000)
+JR= range(0, 15000, 500)
+QR = JR[:]
+QR[0] = 1
 SERVER = None
 BP="gdblocks.portfors.timingInfo."
 PSTDIR = os.path.expanduser("~/project/christine/bicIC/pst")
@@ -649,6 +651,8 @@ def celldoc(cells = GOOD, unify=True, pst='', writedb=False):
 			cd[cn] = d[cn]
 	if unify:
 		cd = unifystims(cd)
+	else:
+		
 	if writedb:
 		gio.write(cd, CDF)
 	return cd
@@ -803,12 +807,12 @@ def stim_srates(d):
 		nd[k] = [ssrate(d[k], i) for i in sorted(set(d[k]['stims']))]
 	return nd
 
-def counting_measures(cells=TEST, conds=['cond1', 'cond2'], save=True):
+def counting_measures(cells, save=True):
 	"""
-	cells: [ of i, conds: [ of s, save: t -> Doc
+	cells: CellDoc, save: t -> Doc
 	
 	creates a spreadsheet of measurements performed on each cell in 
-	celldoc(cells), and each condition in conds. If save is True, writes 
+	in the celldoc, and each condition in conds. If save is True, writes 
 	this document to a csv file OUT. Returns the document, which has a 
 	toplevel key for each cell, a subkey for each conditions, and subkeys
 	within the conditions for each measurement. 
@@ -935,7 +939,7 @@ def getconds(d, conds):
 	return ["->" + c for c in conds]	
 
 
-def jit_scan(d, jit=QR,dmeth='ed_ist', q=None, 
+def jit_scan(d, jit=JR,dmeth='ed_ist', q=None, 
              nclust=55, shuff=5, mim='direct', conds=None):
 	"""
 	d: CellExp, jit: [ of x, n: i, windows: WinSpec, dmeth:DistMode, 
@@ -971,7 +975,7 @@ def jit_scan(d, jit=QR,dmeth='ed_ist', q=None,
 	return scan_with_colate(scan, d, 'jit')
 
 
-def win_jit_scan(d, jit=QR, windows=((0, STIMDUR),),
+def win_jit_scan(d, jit=JR, windows=((0, STIMDUR),),
              dmeth='ed_ist', q=None, nclust=55, shuff=3, 
              mim='direct', conds=None):
 	"""
@@ -991,13 +995,25 @@ def win_jit_scan(d, jit=QR, windows=((0, STIMDUR),),
 	tfs = [BP + tn for tn in ['jit','win', 'dm','grpdm','mi']]
 	rs = [{'jit':jit},{}, {'io':conds}, {}, {}]
 	pars = [{'n':1},{'windows':windows}, {'dmeth':dmeth, 'q':q},
-	        {'nclust':nclust, 'stims':''},{'debias':('shuffle',shuff)}]
+	        {'nclust':nclust, 'stims':''},{'mim':mim, 'debias':db}]
 	forward = {3:{'io':(2, 'io', lambda x:'__'+x[2:])}, 
 	           4:{'io':(2, 'io','')}}
 	out = {3:'->io'}
 	reentry = {1:[-1], 4:[0, 1]}
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
 	return scan_with_colate(scan, d, 'jit')
+
+def repeat_scan(scanfunc, d, n=5, **kw):
+	ss = []
+	for _ in range(n):
+		ss.append(apply(scanfunc, (d,), kw))
+	s = ss[0]
+	for ns in ss[1:]:
+		for k in s.keys(0, 'cond'):
+			ny = ns[k]['y']
+			s[k]['y'] = np.column_stack([s[k]['y'][:,:-1], ny[:,:-1],
+			                             s[k]['y'][:,-1:]])
+	return s
 
 def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5, conds=None):
 	"""
@@ -1021,7 +1037,7 @@ def q_scan(d, qr=QR, dmeth='ed_bin', nclust=55, shuff=5, conds=None):
 	out = {1:'->io'}
 	reentry = {2:[-1]}
 	scan = gdjob.tieredscan(tfs, pars, rs, out, forward, reentry)
-	return scan_with_colate(scan, d, 'jit')
+	return scan_with_colate(scan, d, 'q')
 
 def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200, 
                q=None, conds=None):
@@ -1058,7 +1074,7 @@ def clust_scan(d, dmeth='ed_ist', shuff=5, mclust = 200,
 	return scan_with_colate(scan, d, 'nclust')
 
 ##Scan output commands
-def bsep(s, cp = 'cond1', cn = None, normalize=False, mahal=False):
+def bsep(s, cp = 'cond1', cn = None):
 	'''
 	s: Scan, cp:CondName(s), cn CondName(s), -> (x, x) 
 	
@@ -1071,18 +1087,10 @@ def bsep(s, cp = 'cond1', cn = None, normalize=False, mahal=False):
 	
 	'''
 	mi = np.array(s[cp]['y'])[:,:-1]
-	if normalize:
-		mi = mi/np.array(s[cp]['y'])[:,-1:]
 	midif = mi.mean(1)
 	if cn:
 		mi_ref = np.array(s[cn]['y'])[:,:-1]
-		if normalize:
-			mi_ref = mi_ref/np.array(s[cn]['y'])[:,-1:]
 		midif = midif - mi_ref.mean(1)
-		if mahal:
-			midif = midif/ (mi.std(1) + mi_ref.std(1))
-	elif mahal:
-		midif = midif/mi.std(1)
 	ms = np.argmax(midif)
 	return (s[cp]['x'][ms], midif[ms])
 
@@ -1296,7 +1304,7 @@ def treebsep(cell, dmeth='ed_ist', shuff=5, mclust=80, q= None):
 	s = clust_scan(cell, dmeth, shuff, mclust, q)
 	return _measure_sep(s)
 
-def wholescan(cell, jrange=QR, dmeth='ed_ist', q=None, mclust=100,
+def wholescan(cell, jrange=JR, dmeth='ed_ist', q=None, mclust=100,
                shuff=5, windows=(), njit=5):
 	'''
 	cell: CellExp, jrange:[ of x, dmeth: DistMode, q:DistQ, mclust:i,
@@ -1324,14 +1332,15 @@ def wholescan(cell, jrange=QR, dmeth='ed_ist', q=None, mclust=100,
 		s = jit_scan(cell, jrange, njit, dmeth, q, nc, shuff)
 	return s
 
-def preproc(cells, tn= False, uni=True, drop=(), jitn=0, jitsd=5000, 
+def preproc(cells, tn= False, drop=(), jitn=0, jitsd=5000, 
             comb=False, windows=()):
 	"""
-	macro that loads celldoc(cells, uni), and then runs dropstim, jitter,
-	combine, window (in that order) on each cell in the document. Dropstim runs
-	once for each stim value in the list drop. jitter runs with n=jitn, std =
-	jitsd, comb runs at all if comb is True, and window runs with the windows
-	argument
+	cells: CellDoc
+	
+	macro that runs dropstim, jitter, combine, window (in that order) on each
+	cell in the document. Dropstim runs once for each stim value in the list
+	drop. jitter runs with n=jitn, std = jitsd, comb runs at all if comb is
+	True, and window runs with the windows argument
 	
 	If any of drop, jitn, comb, windows are False values, the associated
 	function is not run (so with all default args, this function is equivalent
@@ -1342,7 +1351,6 @@ def preproc(cells, tn= False, uni=True, drop=(), jitn=0, jitsd=5000,
 	thumbnails.
 	
 	"""
-	cells = celldoc(cells, uni)
 	if tn:
 		if not isinstance(tn, dict):
 			tn = {}
@@ -1438,7 +1446,6 @@ def alljscans(cells, save='', nc=None, cpus=1, **kwargs):
 			fn = os.path.join(save, "%s.png" % cell)
 			showscan(sd[cell], fname=fn)
 	return sd
-
 
 
 def show_win_bsep(wscan):

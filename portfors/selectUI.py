@@ -117,7 +117,7 @@ import matplotlib.pyplot as plt
 import gicdat.doc as gd
 import gicdat.io as gio
 import numpy as np
-from timingUI import load, celldoc, GOOD, showcell
+from timingUI import load, celldoc, preproc, GOOD, showcell
 from timingUI import rfromstim
 from gicdat.enc import flat
 import dist, vis, clust, os

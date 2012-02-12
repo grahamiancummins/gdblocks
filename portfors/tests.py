@@ -318,7 +318,10 @@ def cdoc(mods=(AC(100000, 20.), AC(100000, 100.)), nstims=16, npres=30):
 def p_cdoc():
 	pars = (100000, 30, 15000)
 	mods = [apply(c, pars) for c in [AC, RC, TGC]]
-	return cdoc(mods, 14, 30)	
+	d = cdoc(mods, 14, 30)
+	sc = dict([('stim%i' %i, {'onset':0, 'duration':100}) for i in range(14)])
+	d['stimclasses'] = sc
+	return d
 	
 
 def tr(l = 100000, r=1.0):
