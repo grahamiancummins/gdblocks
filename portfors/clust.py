@@ -59,6 +59,12 @@ try:
 except:
 	from gicdat.control import report
 	report("Pycluster is not found. Several methods in the clust module will fail")
+try:
+	from zss import compare as zscmp
+	from zss.test_tree import Node as ZSNode
+except:
+	from gicdat.control import report
+	report("Zhang-shasha is not found. pct2zst and zssdist in clust will fail")
 	
 
 
@@ -612,3 +618,78 @@ def clustcompatscore(ct1, ct2):
 			if compat(c1, c2):
 				s+=ct1[1][i1]+ct2[1][i2]
 	return s
+
+#zscmp ZSNode from zss
+
+def pct2zst(t, names):
+	"""
+	t: Tree -> ZSNode
+	
+	Convert a pycluster Tree into the tree type used by Zhang-shasha. The 
+	return type is a zss.test_tree.Node, containing the root of the tree.
+	"""
+	r = t[-_root(t)-1]
+	rn = ZSNode('c')
+	def addnode(t, i):
+		if i>=0:
+			n = ZSNode(names[i])
+		else:
+			n = ZSNode('c')
+			tn = t[-i-1]
+			for k in [tn.left, tn.right]:
+				n.addkid(addnode(t, k) )
+		return n
+	return addnode(t, _root(t))
+	
+def zst2dot(zt):
+	"""
+	zt : ZSNode -> s
+	
+	Return a dot language representation of the ZSNode zt
+	"""
+	gv = ['digraph G {']
+	used = []
+	def relabel(n):
+		if n.label in used:
+			i = 2
+			while "%s%i" % (n.label, i) in used:
+				i+=1
+			n.label = "%s%i" % (n.label, i)
+		used.append(n.label)
+	def addnode(n):
+		relabel(n)
+		for k in n.children:
+			addnode(k)
+			gv.append('"%s" -> "%s";' % (n.label, k.label))
+	addnode(zt)
+	gv.append("}")
+	return "\n".join(gv)	
+
+def ft_nr2pt(ftt, names):
+	pt = []
+	for n in buildtree(ftt[0], len(names), ftt[1]):
+		pt.append(Node(n[1], n[2], n[3]))
+	return pt
+
+def t2zst(t, names):
+	"""
+	distributer function that checks the type of tree structure t and calls the 
+	appropriate *2zst function to produce a Zhang-shasha compatible tree.
+	
+	"""
+	if type(t) == Tree:
+		return pct2zst(t, names)
+	else:
+		t = ft_nr2pt(t, names)
+		return pct2zst(t, names)
+	
+	
+	
+def zssdist(t1, t2):
+	"""
+	t1: Tree, t2:Tree -> x
+	
+	Return the edit distance, as computed by zss.compare, between t2zst-compatible trees t1, t2
+	"""
+	t1, t2 = map(t2zst, [t1, t2])
+	return zscmp.distance(t1, t2)
