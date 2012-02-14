@@ -47,7 +47,12 @@ static double
 valat(PyObject *seq, int ind) {
 	long v;
 	double x;
-	v = PyInt_AsLong(PySequence_GetItem(seq, ind));
+    PyObject * p;
+    p = PySequence_GetItem(seq, ind);
+	v = PyInt_AsLong(p);
+	Py_DECREF(p);
+    //can't do v = PyInt..(PySeq...(seq, ind)). 
+    //The internal PyObject gets increffed, and leaks mem.
 	x = (double) v;
 	return x;
 }
@@ -224,6 +229,7 @@ gicpf_evttrans(PyObject *self, PyObject *args)
 }
 
 
+
 static PyObject *
 gicpf_mid(PyObject *self, PyObject *args)
 {
@@ -239,16 +245,16 @@ gicpf_mid(PyObject *self, PyObject *args)
 	xprob = calloc(2*sl, sizeof(double));
 	yprob = calloc(2*sl, sizeof(double));
 	jprob = calloc(3*sl, sizeof(double));
-	nux = ptable1(x, xprob, sl);
+    nux = ptable1(x, xprob, sl);
 	nuy = ptable1(y, yprob, sl);
 	hy  = entropy(yprob, nuy, sl);
 	hx  = entropy(xprob, nux, sl);
 	nj  = ptable2(x, y, jprob, sl);
-	mi = 0.0;
+    mi = 0.0;
 	for (i=0;i<nj; i++) {
 		jpr = jprob[i+2*sl] / slad;
-		/*jprob[i] is the x value, jprob[i+nj] is the y value, jprob[i+2*nj] is the prob*/
-		/*none of these prob tables devide by the seqence length*/
+		//jprob[i] is the x value, jprob[i+nj] is the y value, jprob[i+2*nj] is the prob
+		//none of these prob tables devide by the seqence length
 		pmp = (xprob[ index1(jprob[i] ,xprob, nux)+sl]/slad)* (yprob[index1(jprob[i+sl],yprob,nuy)+sl] / slad);
 		//product of marginal probabilities
 		mi+= jpr * log(jpr/pmp )/log(2);
