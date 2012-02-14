@@ -250,12 +250,33 @@ def _nullrate(c):
 			nnul+=1
 	return float(nnul)/npre
 
+
+def _stimrespcount(c, i):
+	np = 0
+	ns = 0
+	for ei, e in enumerate(c['evts']):
+		if c['stims'][ei] ==i:
+			np+=1
+			ns+=len(e)
+	return (ns, np)
+
+
+def _ns95(c):
+	sdsc = [_stimrespcount(c, i)[0] for i in set(c['stims'])]
+	sdsc = np.array(sorted(sdsc))[::-1]
+	cs = sdsc.cumsum()
+	n = np.nonzero(cs>.95*cs[-1])[0][0]
+	return n+1
+
+	
 CMEAS = {'max_spikes':lambda x:max([len(e) for e in x['evts']]), 
          'mean_spikes':lambda x:
             np.array([len(e) for e in x['evts']]).mean(),
          'nullrate':_nullrate,
-         'nonresponse_rate':_nrs_rt,'stim_entropy':_stiment}
-
+         'nstim':lambda x:len(set(x['stims'])),
+         'nstim95':_ns95,
+         #'nonresponse_rate':_nrs_rt,'stim_entropy':_stiment,
+}
 def _shift(evtl, v):
 	nel = []
 	for et in evtl:
@@ -651,8 +672,6 @@ def celldoc(cells = GOOD, unify=True, pst='', writedb=False):
 			cd[cn] = d[cn]
 	if unify:
 		cd = unifystims(cd)
-	else:
-		
 	if writedb:
 		gio.write(cd, CDF)
 	return cd
@@ -793,18 +812,14 @@ def jitter(d, n=5, std=5000):
 	"""
 	return d.fuse(tin.jit(d, {'n':n, 'jit':std})[0]) 
 
-def stim_srates(d):
+def stim_srates(d, count=False):
 	nd = gd.Doc()
-	def ssrate(c, i):
-		np = 0
-		ns = 0
-		for ei, e in enumerate(c['evts']):
-			if c['stims'][ei] ==i:
-				np+=1
-				ns+=len(e)
-		return float(ns)/np
 	for k in d.keys(0, 'cond'):
-		nd[k] = [ssrate(d[k], i) for i in sorted(set(d[k]['stims']))]
+		rr = []
+		for i in sorted(set(d[k]['stims'])):
+			ns, np = _stimrespcount(d[k], i)
+		rr.append(float(ns)/np)
+		nd[k] = rr
 	return nd
 
 def counting_measures(cells, save=True):
@@ -820,13 +835,11 @@ def counting_measures(cells, save=True):
 	The measurements are determined by the module dictionary CMEAS: {s of 
 	def. Each function operates on an IntIO and results in a number or string
 	"""
-	cd = celldoc(cells)
 	md = gd.Doc()
-	for c in cd:
-		for cond in conds:
-			if cond in cd[c]:
-				for m in CMEAS:
-					md[c+'.'+cond+'.'+m] = CMEAS[m](cd[c][cond])
+	for c in cells.keys(0, 'cell'):
+		for cond in cells[c].keys(0, 'cond'):
+			for m in CMEAS:
+				md[c+'.'+cond+'.'+m] = CMEAS[m](cells[c][cond])
 	if save:
 		gio.write(md, OUT)
 	return md
@@ -1447,6 +1460,24 @@ def alljscans(cells, save='', nc=None, cpus=1, **kwargs):
 			showscan(sd[cell], fname=fn)
 	return sd
 
+
+def checkmaxinfo(cells, dmeths=(), qs=(), mclust=100):
+	rd = gd.Doc()
+	for k in cells.keys(0, 'cell'):
+		for dm in dmeths:
+			if dm.split('_')[-1] in ['ist', 'isi', 'irate']:		
+				s = treebsep(cells[k], dm, 5, mclust, None)
+				for c in s.keys(0, 'cond'):	
+					rd['.'.join((k, c, dm, 'mi'))] = s[c]['best_MI']
+					rd['.'.join((k, c, dm, 'nc'))] = s[c]['best_nclust']
+			else:
+				for q in qs:
+					s = treebsep(cells[k], dm, 5, mclust, q)
+					for c in s.keys(0, 'cond'):
+						qn = "q%i" % (int(q),)
+						rd['.'.join((k, c, dm, qn))] = {'mi':s[c]['best_MI'],
+						                            'nc':s[c]['best_nclust']}
+	return rd
 
 def show_win_bsep(wscan):
 	bsv_c1 = []
