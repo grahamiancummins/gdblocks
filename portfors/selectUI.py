@@ -188,24 +188,24 @@ def rrps(cells):
 	sns[j].
 	
 	"""
-	cns = sorted(cells)
+	cns = cells.keys(0, 'cell', sort=True)
 	stims = stimnames(cells[cns[0]])
-	sns = sorted(stims.values())
-	hists = {'cond1':np.zeros((len(cns), len(sns))),
-	         'cond2':np.zeros((len(cns), len(sns)))}
+	hists = {'cond1':np.zeros((len(cns), len(stims))),
+	         'cond2':np.zeros((len(cns), len(stims)))}
 	for i, cn in enumerate(cns):
 		for cond in ['cond1', 'cond2']:
 			nts = len(flat(cells[cn][cond]['evts']))
 			if not nts:
 				continue
-			for sno in stims:
-				scol = sns.index(stims[sno])
+			for sno, sname in enumerate(stims):
 				evts = rfromstim(cells[cn], cond, sno)
 				if evts:	
 					rr = float(len(flat(evts)))/float(nts)
-				hists[cond][i, scol] = rr
+				else:
+					rr = 0
+				hists[cond][i, sno] = rr
 			#hists[cond][i,:] = np.argsort(hists[cond][i,:])
-	return (cns, sns, hists)
+	return (cns, stims, hists)
 
 def show_rrps(cells):
 	"""
@@ -643,11 +643,13 @@ def intergroup_zss(dtg):
 def show_intergroup_zss(zz, pw, dtg, nbs=10, nbars = 10):
 	f = plt.figure(1)
 	plt.clf()
-	plt.hist(zz[0][0], nbars, color = 'r', label = 'different cell and condition')
-	plt.hist(zz[1][1], nbars, color = 'b', label = 'same cell and condition')
-	plt.hist(zz[0][1], nbars, color = (1, .5, 0), 
+	plt.hist(zz[0][0], nbars, color = 'r', normed=True,
+	         label = 'different cell and condition')
+	plt.hist(zz[1][1], nbars, color = 'b', normed=True,
+	         label = 'same cell and condition')
+	plt.hist(zz[0][1], nbars, color = (1, .5, 0), normed=True,
 	         alpha=.6, label = 'different cell')
-	plt.hist(zz[1][0], nbars, color = 'g', 
+	plt.hist(zz[1][0], nbars, color = 'g', normed=True,
 	         alpha=.6, label = 'different condition')
 	plt.legend(loc='best')
 	f.canvas.draw()
@@ -658,7 +660,7 @@ def show_intergroup_zss(zz, pw, dtg, nbs=10, nbars = 10):
 	plt.colorbar()
 	x = np.arange(0, dm.shape[1], nbs*2)+nbs
 	cn = [dtg['t%i.cell' % i] for i in x] 
-	plt.xticks(x, cn)
+	plt.xticks(x, cn, rotation = 'vertical')
 	f.canvas.draw()
 	
 def full_intergroup_zss(cd, mode='vdps', q=6000, nbs=10, ndrop=5):
