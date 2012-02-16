@@ -30,6 +30,23 @@ def allstims(cdoc):
 		stims = stims.union(l)
 	return stims
 
+def stimsfor(cdoc, cell):
+	c = cdoc[cell]
+	gc = set(c['cond1.stims'])
+	gc = gc.intersection(set(c['cond2.stims']))
+	l = [c['stimclasses.stim%i.file' % k] for k in gc]
+	return sorted(l)
+
+def hasstims(cdoc, stims):
+	stims = set(stims)
+	cells = []
+	for k in cdoc.keys(0, 'cell'):
+		cst = set(stimsfor(cdoc, k))
+		if stims.issubset(cst):
+			cells.append(k)
+	return cells 
+	
+
 def jitt():
 	d = tests.p_cdoc()
 	c = d['condtgc']

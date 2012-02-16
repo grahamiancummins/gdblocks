@@ -506,25 +506,28 @@ def dropsamp(cond, ndrop):
 		nd['evts'].append(cond['evts'][dr[i]])
 	return nd
 
+def drop_tree(cond, mode='vdps', q=6000, nbs=20, 
+                   ndrop=1, N=14):
+	trees = []
+	for _ in range(nbs):
+		d = dropsamp(cond, ndrop)
+		dm = dist_discrim_incond(d, mode, q, N)
+		if np.any(np.isnan(dm)):
+			print('Warning: subsample changes classes. Discarding')
+			continue
+		trees.append(clust.dtree(dm))	
+	return trees
+
 def bootstrap_tree(cond, mode='vdps', q=6000, nbs=20, 
                    ndrop=1, show = 0, names = None):
 	"""
 	cond: IntIO, mode:DistMode, q: DistQ, nbs:i, ndrop:i -> 
 	
 	"""
-	trees = []
 	if not names:
 		sids = tuple(sorted(set(cond['stims'])))
 		names = ['s%i' % i for i in sids]
-	#dcm = dist_discrim_incond(cond, mode, q, len(names))
-	for _ in range(nbs):
-		d = dropsamp(cond, ndrop)
-		dm = dist_discrim_incond(d, mode, q, len(names))
-		if np.any(np.isnan(dm)):
-			print('Warning: subsample changes classes. Discarding')
-			continue
-		trees.append(clust.dtree(dm))
-	#return trees
+	trees = drop_tree(cond, mode, q, nbs, ndrop, len(names))
 	ft, nr = clust.mrtree(trees)
 	if show:
 		s = clust.ctree2dot(ft, names, nr)
@@ -568,138 +571,234 @@ def tree_stability(d, mode='vdps', q=6000, nbs = 20, ndrop=5):
 	ss = [np.array(ts[i][1]).sum() for i in range(3)]
 	sm = 2*ss[2] / (ss[0] + ss[1])
 	return (sm, ts)
-	
-def all_tree_stability(cd, mode='vdps', q=6000, nbs = 20, ndrop=5, show=1):
-	dname = os.path.expanduser("~/Dropbox/wsu/clust/stability")
-	suf = ''
-	od = gd.Doc()
-	for cn in cd:
-		if not cn.startswith('cell'):
-			continue
-		sm, ts = tree_stability(cd[cn], mode, q, nbs, ndrop)
-		od[cn] = {'stability':sm, 'ctrees':ts}
-		print('%s : %.3g' % (cn, sm))
-		if show:
-			names = stimnames(cd[cd.find('_', kp=':^cell', depth=1).next()])
-			for i, c in enumerate(['cond1', 'cond2', 'condAll']):
-				ft, nr = ts[i]
-				f=plt.figure(1)
-				plt.clf()
-				plt.title("Bootstrap Majority Tree, %s" % c)
-				s = clust.ctree2dot(ft, names, nr)
-				im = vis.dot2img(s)
-				plt.imshow(im)	
-				sb = f.get_axes()[0]
-				sb.yaxis.set_visible(False)
-				sb.xaxis.set_visible(False)
-				f.canvas.draw()
-				fn = os.path.join(dname, "%s_%s_mrtree%s%i%s.png" % (cn, c, mode,
-					                int(q), suf))
-				plt.savefig(fn)
-	return od
 
-def trees_across_cells(cd, mode='vdps', q=6000):
-	trees = []
-	names = None
-	for cn in cd:
-		if not cn.startswith('cell'):
-			continue
-		if names is None:
-			names = stimnames(cd[cn])
-		for cond in ['cond1', 'cond2']:
-			dm = dist_discrim_incond(cd[cn][cond], mode, q, len(names))	
-			trees.append(clust.dtree(dm))
-	ft, nr = clust.mrtree(trees)
-	s = clust.ctree2dot(ft, names, nr)
-	show_tree(s)
+def droptree_groups(cd, mode='vdps', q=6000, nbs=10, ndrop=5):
+	"""
+	cd : CellDoc other args for drop_tree
 	
-def tree_sim_per_q(cell, mode='vdps', qr = [1, 20000, 4000]):
-	pass
+	returns a document that contains a KeySet t of documents with "_" a tree2tup
+	of a clustering tree, "cell" a cell name from cd, "cond" a condition name.
+	These represent the result of running several sample drop clustering trials
+	(as done by drop_tree), and labeling the resulting trees for cell and
+	condition
+	
+	"""
+	cn = cd.keys(0, 'cell')
+	conds = ['cond1', 'cond2']
+	d = gd.Doc()
+	names = [cd[cn[0]]['stimclasses'][k]['file'] for k in 
+	         cd[cn[0]]['stimclasses'].keys(sort=True)]
+	i = 1
+	for cell in cn:
+		for cond in conds:
+			trees = drop_tree(cd[cell][cond], mode, q, nbs, ndrop, len(names))
+			for t in trees:
+				d['t%i' % i] = {'_':clust.tree2tup(t), 'cell':cell, 
+				                'cond':cond}
+				i+=1
+	d['names'] = names
+	return d
 
-def do_all_icd(cd, q = 6000, mode='vdps', save="/home/gic/Dropbox/wsu/clust", 
-               suf=''):
-	"""
-	cd: CellDoc
-	(q, mode, save, suf): as for show_cell_icd, cells: [ of i -> None 
-		(writes files and draws in MPL figure 1)
-	
-	Does show_cell_icd and show_cell_clust with the indicated (q, mode, save, 
-	suf) and fig=1, for every cell in cd. The point of this is to save 
-	all the image files. Drawing in figure 1 is rather useless, since it 
-	overwrites the things it draws often. Probably should be modified to
-	use a file based MPL backend instead, eventually.
-	
-	"""
-	for cell in cd:
-		show_cell_icd(cd[cell], mode, q, cn = cell)
-		show_cell_clust(cd[cell], mode, q, cn = cell)
+def _pairwise(l, f):
+	z = f(l[0], l[1])
+	dm = {}
+	for i in range(len(l)-1):
+		for j in range(i, len(l)):
+			dm[(i,j)] = f(l[i], l[j])
+	return dm
 
-def icd_treediff(cell, mode, q):
-	"""
-	cell: i | CellExp, mode: DistMode, q: DistQ -> float
-	
-	"""
-	if type(cell) == int:
-		d = load(cell)
-	else:
-		d = cell
-	labs = stimnames(d)
-	a1= dist_discrim_incond(d['cond1'],mode, q, len(labs))
-	a2= dist_discrim_incond(d['cond2'],mode, q, len(labs))
-	t1 = clust.dtree(a1)
-	t2 = clust.dtree(a2)
-	td = clust.cmptrees(t1, t2)
-	return (td.sum() - np.diag(td).sum())/float(td.shape[0])
+def _dmfrompw(pw):
+	z = 0
+	for k in pw:
+		z = max(z, max(k))
+	z+=1
+	dm = np.zeros((z,z))
+	for k in pw:
+		dm[k[0], k[1]] = pw[k]
+		dm[k[1], k[0]] = pw[k]
+	return dm
 
-def scan_cell_tdiff(cell, modes=['ed_bin', 'vd', 'vdps', 'ed_ist'], 
-                    qs = [1000, 2000, 5000, 10000, 20000, 100000],
-                    plot=True, save=''):
-	"""
-	cell: i, modes: [ of DistMode, qs: [ of DistQ, plot: t, save: FileName ->
-		N-M-# of x::N==len(modes), M==len(qs)    (may plot in MPL fig 1 
-		and may save a file)
-	
-	returns an array of the values of icd_treediff(cell, mode, q) for each 
-	mode in modes and each q in qs.
-	
-	if plot is true, draw a graph of the results, with one line per mode, and
-	one point per q. If save is non-empty, also save the plot
-	"""
-	d = load(cell)
-	out = np.zeros((len(modes), len(qs)))
-	if plot:
-		f = plt.figure(1)
-		plt.clf()
-		qs = np.array(qs)
-	for i in range(out.shape[0]):
-		for j in range(out.shape[1]):
-			out[i,j] = icd_treediff(cell, modes[i], qs[j])
-		if plot:
-			plt.plot(qs, out[i,:], label = modes[i])
-	if plot:
-		plt.legend(loc='best')
-		f.canvas.draw()
-		if save:
-			plt.savefig(save)
-	return out
+def _grpstats(dtg, pw):
+	# first index is cell is the same  (0, 1)
+	# second is condition is the same (0, 1)
+	zz = [ [[], []],
+	       [[], []] ]
+	for k in pw:
+		t1 = "t%i" % (k[0]+1,)
+		t2 = "t%i" % (k[1]+1,)
+		i = int(dtg[t1]['cell'] == dtg[t2]['cell'])
+		j = int(dtg[t1]['cond'] == dtg[t2]['cond'])
+		zz[i][j].append(pw[k])
+	return zz
+		
 
-def scan_many_cell_tdiffs(cells=GOOD, 
-                          modes=['ed_bin', 'vd', 'vdps', 'ed_ist'], 
-                          qs = [1000, 2000, 5000, 10000, 20000, 100000],
-                          save='~/Dropbox/wsu/roc/tdiffs'):
-	"""
-	cells: [ of i, (modes, qs) as for scan_cell_tdiff, save: DirName -> 
-		None (writes files in save, draws in MPL figure 1)
+def intergroup_zss(dtg):
+	"""dtg is output from droptree_groups"""
+	ks = dtg.keys(0, 't', sort=True)
+	ts = [clust.tup2tree(dtg[k]['_']) for k in ks]
+	pw = _pairwise(ts, lambda x,y:clust.zssdist(x, y, dtg['names']))
+	zz = _grpstats(dtg, pw)
+	return (zz, pw)
 
-	Runs scan_cell_tdiff for each cell in cells, with a save argument of 
-	save/cell#.png
+def show_intergroup_zss(zz, pw, dtg, nbs=10, nbars = 10):
+	f = plt.figure(1)
+	plt.clf()
+	plt.hist(zz[0][0], nbars, color = 'r', label = 'different cell and condition')
+	plt.hist(zz[1][1], nbars, color = 'b', label = 'same cell and condition')
+	plt.hist(zz[0][1], nbars, color = (1, .5, 0), 
+	         alpha=.6, label = 'different cell')
+	plt.hist(zz[1][0], nbars, color = 'g', 
+	         alpha=.6, label = 'different condition')
+	plt.legend(loc='best')
+	f.canvas.draw()
+	f = plt.figure(2)
+	plt.clf()
+	dm = _dmfrompw(pw)
+	plt.imshow(dm)
+	plt.colorbar()
+	x = np.arange(0, dm.shape[1], nbs*2)+nbs
+	cn = [dtg['t%i.cell' % i] for i in x] 
+	plt.xticks(x, cn)
+	f.canvas.draw()
 	
-	"""
-	save = os.path.expanduser(save)
-	for cell in cells:
-		cn = "cell%i.png" % cell
-		scan_cell_tdiff(cell, modes, qs, True, os.path.join(save, cn))
-	
+def full_intergroup_zss(cd, mode='vdps', q=6000, nbs=10, ndrop=5):
+	dtg = droptree_groups(cd, mode, q, nbs, ndrop)
+	zz, dm = intergroup_zss(dtg)
+	show_intergroup_zss(zz, dm, dtg)
+	return (zz, dm, dtg)
+
+## This method of tree comparison is depricated in favor of ZSS 	
+##def all_tree_stability(cd, mode='vdps', q=6000, nbs = 20, ndrop=5, show=1):
+##	dname = os.path.expanduser("~/Dropbox/wsu/clust/stability")
+##	suf = ''
+##	od = gd.Doc()
+##	for cn in cd:
+##		if not cn.startswith('cell'):
+##			continue
+##		sm, ts = tree_stability(cd[cn], mode, q, nbs, ndrop)
+##		od[cn] = {'stability':sm, 'ctrees':ts}
+##		print('%s : %.3g' % (cn, sm))
+##		if show:
+##			names = stimnames(cd[cd.find('_', kp=':^cell', depth=1).next()])
+##			for i, c in enumerate(['cond1', 'cond2', 'condAll']):
+##				ft, nr = ts[i]
+##				f=plt.figure(1)
+##				plt.clf()
+##				plt.title("Bootstrap Majority Tree, %s" % c)
+##				s = clust.ctree2dot(ft, names, nr)
+##				im = vis.dot2img(s)
+##				plt.imshow(im)	
+##				sb = f.get_axes()[0]
+##				sb.yaxis.set_visible(False)
+##				sb.xaxis.set_visible(False)
+##				f.canvas.draw()
+##				fn = os.path.join(dname, "%s_%s_mrtree%s%i%s.png" % (cn, c, mode,
+##					                int(q), suf))
+##				plt.savefig(fn)
+##	return od
+##
+##def trees_across_cells(cd, mode='vdps', q=6000):
+##	trees = []
+##	names = None
+##	for cn in cd:
+##		if not cn.startswith('cell'):
+##			continue
+##		if names is None:
+##			names = stimnames(cd[cn])
+##		for cond in ['cond1', 'cond2']:
+##			dm = dist_discrim_incond(cd[cn][cond], mode, q, len(names))	
+##			trees.append(clust.dtree(dm))
+##	ft, nr = clust.mrtree(trees)
+##	s = clust.ctree2dot(ft, names, nr)
+##	show_tree(s)
+##	
+##def tree_sim_per_q(cell, mode='vdps', qr = [1, 20000, 4000]):
+##	pass
+##
+##def do_all_icd(cd, q = 6000, mode='vdps', save="/home/gic/Dropbox/wsu/clust", 
+##               suf=''):
+##	"""
+##	cd: CellDoc
+##	(q, mode, save, suf): as for show_cell_icd, cells: [ of i -> None 
+##		(writes files and draws in MPL figure 1)
+##	
+##	Does show_cell_icd and show_cell_clust with the indicated (q, mode, save, 
+##	suf) and fig=1, for every cell in cd. The point of this is to save 
+##	all the image files. Drawing in figure 1 is rather useless, since it 
+##	overwrites the things it draws often. Probably should be modified to
+##	use a file based MPL backend instead, eventually.
+##	
+##	"""
+##	for cell in cd:
+##		show_cell_icd(cd[cell], mode, q, cn = cell)
+##		show_cell_clust(cd[cell], mode, q, cn = cell)
+##
+##def icd_treediff(cell, mode, q):
+##	"""
+##	cell: i | CellExp, mode: DistMode, q: DistQ -> float
+##	
+##	"""
+##	if type(cell) == int:
+##		d = load(cell)
+##	else:
+##		d = cell
+##	labs = stimnames(d)
+##	a1= dist_discrim_incond(d['cond1'],mode, q, len(labs))
+##	a2= dist_discrim_incond(d['cond2'],mode, q, len(labs))
+##	t1 = clust.dtree(a1)
+##	t2 = clust.dtree(a2)
+##	td = clust.cmptrees(t1, t2)
+##	return (td.sum() - np.diag(td).sum())/float(td.shape[0])
+##
+##def scan_cell_tdiff(cell, modes=['ed_bin', 'vd', 'vdps', 'ed_ist'], 
+##                    qs = [1000, 2000, 5000, 10000, 20000, 100000],
+##                    plot=True, save=''):
+##	"""
+##	cell: i, modes: [ of DistMode, qs: [ of DistQ, plot: t, save: FileName ->
+##		N-M-# of x::N==len(modes), M==len(qs)    (may plot in MPL fig 1 
+##		and may save a file)
+##	
+##	returns an array of the values of icd_treediff(cell, mode, q) for each 
+##	mode in modes and each q in qs.
+##	
+##	if plot is true, draw a graph of the results, with one line per mode, and
+##	one point per q. If save is non-empty, also save the plot
+##	"""
+##	d = load(cell)
+##	out = np.zeros((len(modes), len(qs)))
+##	if plot:
+##		f = plt.figure(1)
+##		plt.clf()
+##		qs = np.array(qs)
+##	for i in range(out.shape[0]):
+##		for j in range(out.shape[1]):
+##			out[i,j] = icd_treediff(cell, modes[i], qs[j])
+##		if plot:
+##			plt.plot(qs, out[i,:], label = modes[i])
+##	if plot:
+##		plt.legend(loc='best')
+##		f.canvas.draw()
+##		if save:
+##			plt.savefig(save)
+##	return out
+##
+##def scan_many_cell_tdiffs(cells=GOOD, 
+##                          modes=['ed_bin', 'vd', 'vdps', 'ed_ist'], 
+##                          qs = [1000, 2000, 5000, 10000, 20000, 100000],
+##                          save='~/Dropbox/wsu/roc/tdiffs'):
+##	"""
+##	cells: [ of i, (modes, qs) as for scan_cell_tdiff, save: DirName -> 
+##		None (writes files in save, draws in MPL figure 1)
+##
+##	Runs scan_cell_tdiff for each cell in cells, with a save argument of 
+##	save/cell#.png
+##	
+##	"""
+##	save = os.path.expanduser(save)
+##	for cell in cells:
+##		cn = "cell%i.png" % cell
+##		scan_cell_tdiff(cell, modes, qs, True, os.path.join(save, cn))
+##	
 def pairwise_ROC(d, cond='cond1',mode='ed_bin', q=20000, nroc=100):
 	"""
 	d: CellExp, cond: CondName(d), mode: DistMode, q: DistQ, nroc: i ->

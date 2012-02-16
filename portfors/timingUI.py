@@ -218,9 +218,13 @@ rate equalization is done by "combineevts", imported from timingInfo
 """
 
 CONDS = ['cond1', 'cond2']
-TEST = [5, 8,14,15,16, 19,20,32,33,35,39, 40, 42, 44, 45, 48, 
-        49, 50, 51, 52, 53, 54, 55, 56, 57, 58]
-GOOD = [8, 32, 33, 35, 50, 51, 52, 55, 57, 58]
+ALLEXP  =  [5, 8, 14, 15, 16, 32, 33, 35, 39, 40, 42, 44, 45, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58]
+NOCODE = [5, 44, 48, 55]
+GRANDMA = [39, 40, 49, 52, 54, 56]
+ICEBERG = [8, 16, 32, 33, 35, 45]
+PATTERN = [50, 57, 58]
+C2ONLY = [14, 15, 42]
+ANOMALY = [51]
 
 STIMDUR = 143.856
 
@@ -261,11 +265,11 @@ def _stimrespcount(c, i):
 	return (ns, np)
 
 
-def _ns95(c):
+def _ns90(c):
 	sdsc = [_stimrespcount(c, i)[0] for i in set(c['stims'])]
 	sdsc = np.array(sorted(sdsc))[::-1]
 	cs = sdsc.cumsum()
-	n = np.nonzero(cs>.95*cs[-1])[0][0]
+	n = np.nonzero(cs>.9*cs[-1])[0][0]
 	return n+1
 
 	
@@ -274,7 +278,7 @@ CMEAS = {'max_spikes':lambda x:max([len(e) for e in x['evts']]),
             np.array([len(e) for e in x['evts']]).mean(),
          'nullrate':_nullrate,
          'nstim':lambda x:len(set(x['stims'])),
-         'nstim95':_ns95,
+         'nstim90':_ns90,
          #'nonresponse_rate':_nrs_rt,'stim_entropy':_stiment,
 }
 def _shift(evtl, v):
@@ -632,7 +636,7 @@ def unifystims(cd):
 			ncd[cell][cond] = convert_stimno(cd[cell][cond], stims)
 	return ncd
 
-def celldoc(cells = GOOD, unify=True, pst='', writedb=False):
+def celldoc(cells = ALLEXP, unify=True, pst='', writedb=False):
 	"""
 	cells: [ of i, unify: t, pst: DirName?, writedb: t-> 
 			{Keyset('cell'):CellExp}
@@ -1243,8 +1247,10 @@ def showManyScansSP(sd, perspike=False):
 	plt.clf()
 	mim = np.inf
 	mam = 0
+	n = len(sd.keys(0, 'cell'))
+	nrows = np.ceil(n/3.0)
 	for ci, c in enumerate(sd.keys(0, 'cell', sort=True)):
-		sp=plt.subplot(4, 3, ci+1)
+		sp=plt.subplot(nrows, 3, ci+1)
 		z = _errbar_scan(sd[c]['cond1'], False, perspike, 
 		                 color = 'b', linewidth=4, label ='cond1')
 		mim = min(mim, z.min())
@@ -1256,8 +1262,8 @@ def showManyScansSP(sd, perspike=False):
 		mim = min(mim, z2.min())
 		mam = max(mam, z2.max())
 		plt.title(c)
-	for i in range(1, 13):
-		sp = plt.subplot(4, 3, i)
+	for i in range(1, n+1):
+		sp = plt.subplot(nrows, 3, i)
 		if not sp.is_first_col():
 			sp.yaxis.set_visible(False)
 			sp.xaxis.set_visible(False)	
@@ -1433,7 +1439,7 @@ def allcscans(cells, save='',cpus=1, **kwargs):
 			showscan(nd[cell], fname=fn)
 	return nd
 
-def alljscans(cells, save='', nc=None, cpus=1, **kwargs):
+def alljscans(cells, nreps=5, save='', nc=None, cpus=1, **kwargs):
 	if not nc:
 		kw = {'dmeth':'ed_ist', 'shuff':5, 'q':None}
 		for k in kw:
@@ -1449,17 +1455,18 @@ def alljscans(cells, save='', nc=None, cpus=1, **kwargs):
 	for c in cells:
 		ncl = nc[c]['best_nclust']
 		print("%s (%i clusters)" % (c, ncl))
-		if kwargs.get('windows'):	
-			sd[c] = win_jit_scan(cells[c], nclust=ncl, **kwargs)
+		if kwargs.get('windows'):
+			sf = win_jit_scan
 		else:
-			sd[c] = jit_scan(cells[c], nclust=ncl, **kwargs)
+			sf = jit_scan
+		sd[c] = repeat_scan(sf, cells[c], nreps, 
+			                    nclust=ncl, **kwargs)
 	if save:
 		save = _dirprep(save)
 		for cell in sd.keys(0, 'cell'):
 			fn = os.path.join(save, "%s.png" % cell)
 			showscan(sd[cell], fname=fn)
 	return sd
-
 
 def checkmaxinfo(cells, dmeths=(), qs=(), mclust=100):
 	rd = gd.Doc()
@@ -1478,6 +1485,42 @@ def checkmaxinfo(cells, dmeths=(), qs=(), mclust=100):
 						rd['.'.join((k, c, dm, qn))] = {'mi':s[c]['best_MI'],
 						                            'nc':s[c]['best_nclust']}
 	return rd
+## There's still a slow memory leak that occurs in the above. Leaks about 100 mb
+## while scanning the full data set with ed_ist, vdps, vd, 1000, 6000, 12000
+
+def _ccolor(cond, dm, dms):
+	if cond == 'cond1':
+		c = [0, 0, 1]
+	else:
+		c = [1, 0, 1]
+	c[1] = .9*float(dms.index(dm))/len(dms)
+	return c
+
+def showmim(s, mclust=100, cells = None):	
+	if not cells:
+		cells = s.keys(0, 'cell', sort=True)
+	f = plt.figure(1)
+	plt.clf()
+	#ncs = np.array([s[k] for k in s.keys(-1) if k[-3:] == '.nc'])
+	#mis = np.array([s[k] for k in s.keys(-1) if k[-3:] == '.mi'])
+	bx = np.arange(len(cells))
+	conds = ['cond1', 'cond2']
+	dms = s[cells[0]][conds[0]].keys(1)
+	dms = [d for d in dms if not d[-3:] in ['.mi', '.nc', 'dps', 'vd']]
+	bw = .9/(2*len(dms))
+	for i, c in enumerate(conds):
+		for j, dm in enumerate(dms):
+			col = _ccolor(c, dm, dms)
+			ncs = np.array([s[k][c][dm]['nc'] for k in cells])/float(mclust)
+			mis = [s[k][c][dm]['mi'] for k in cells]
+			x = bx + bw*(2*j+i)
+			lab = "%s,%s" % (dm, c)
+			plt.bar(x, ncs, bw, 0, color = col, label = lab)
+			plt.bar(x, mis, bw, 1.0, color = col)
+	plt.xticks(bx+.4, cells)
+	plt.legend(loc = 'best')
+	f.canvas.draw()
+
 
 def show_win_bsep(wscan):
 	bsv_c1 = []

@@ -249,6 +249,18 @@ def tree2dot(tree, names=None):
 	gv.append('}')
 	return "\n".join(gv)
 
+
+def tree2tup(t):
+	"""Converts a Pycluster Tree to a list of tuples (which can be stored in a
+	gd.Doc, repr/eval group, etc)"""
+	return tuple( [(n.left, n.right, n.distance) for n in t] )
+
+def tup2tree(t):
+	"""Restores a PyCluster Tree from the output of tree2tup"""
+	return Tree([Node(*n) for n in t])
+	
+
+
 def treecontains(tree, node, leaf):
 	'''
 	tree: Tree(N), node: Node, leaf: Node -> bool
@@ -685,11 +697,11 @@ def t2zst(t, names):
 	
 	
 	
-def zssdist(t1, t2):
+def zssdist(t1, t2, names):
 	"""
 	t1: Tree, t2:Tree -> x
 	
 	Return the edit distance, as computed by zss.compare, between t2zst-compatible trees t1, t2
 	"""
-	t1, t2 = map(t2zst, [t1, t2])
+	t1, t2 = map(lambda x:t2zst(x, names), [t1, t2])
 	return zscmp.distance(t1, t2)

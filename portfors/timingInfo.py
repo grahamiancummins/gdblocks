@@ -253,24 +253,17 @@ class GroupDM(Transform):
 			cargs = pars['cargs'] or {}
 			out['evts'] = clustdm(pars['clust'], dm, pars['nclust'], cargs)
 
-def _tree2tup(t):
-	return tuple( [(n.left, n.right, n.distance) for n in t] )
-
-def _tup2tree(t):
-	return clust.Tree([clust.Node(*n) for n in t])
-	
-
 class DMTree(Transform):
 	defaults = {'dm':'->dm'}
 	def run(self, pars, out, messages):
 		dm = np.array(pars['dm'])
 		t =  clust.dtree(dm)
-		out['tree'] = _tree2tup(t)
+		out['tree'] = clust.tree2tup(t)
 
 class CMI(Transform):
 	defaults = {'tree':"->tree", 'stims':"->stims", 'nclust':2, 'shuff':5}
 	def run(self, pars, out, messages):
-		t = _tup2tree(pars['tree'])
+		t = clust.tup2tree(pars['tree'])
 		part = t.cut(min(pars['nclust'], len(t)))
 		io = gd.Doc({'stims':pars['stims'], 'evts':part})
 		if type(pars['shuff']) in [str, unicode]:
