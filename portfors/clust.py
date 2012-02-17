@@ -534,6 +534,25 @@ def compat(c1 , c2):
 		return True
 	return False
 
+def contained_in(ft, ft2):
+	inft2 = set()
+	for f in ft2:
+		inft2 = inft2.union(f)
+	new = []
+	for f in ft:
+		new.append(sorted(list(inft2.intersection(f))))
+	return new
+
+def equal_clust_frac(ft1, ft2):
+	n = 0
+	for c in ft1:
+		s1 = set(c)
+		for c2 in ft2:
+			if set(c2) == s1:
+				n+=1
+				break
+	return float(n)/len(ft1)
+
 def clustcounts(trees):
 	atc = {}
 	for t in trees:
@@ -574,7 +593,8 @@ def buildtree(ft, n, nr=None):
 		ni = active.pop(0)
 		lc = _lchild(nn[ni][0], ft)
 		if lc == -1:
-			print('Warning: tree incomplete')
+			pass
+			#print('Warning: tree incomplete')
 		else:
 			if nr!=None:
 				prob = nr[lc]
@@ -596,6 +616,8 @@ def buildtree(ft, n, nr=None):
 						nn.append([s, None, None, prob])
 	nodeids = {}
 	return nn
+
+	
 
 def ctree2dot(ft, names, nr=None):
 	tree = buildtree(ft, len(names), nr)
@@ -678,10 +700,23 @@ def zst2dot(zt):
 	return "\n".join(gv)	
 
 def ft_nr2pt(ftt, names):
-	pt = []
-	for n in buildtree(ftt[0], len(names), ftt[1]):
-		pt.append(Node(n[1], n[2], n[3]))
-	return pt
+	nodes = {}
+	for i, n in enumerate(names):
+		nodes[i] = ZSNode(n)
+	t = buildtree(ftt[0], len(names), ftt[1])
+	for i, n in enumerate(t):
+		nid = -i-1
+		if not nid in nodes:
+			nodes[nid] = ZSNode('c')
+		if n[1] != None:
+			s = [n[1], n[2]]
+		else:
+			s = list(n[0])
+		for v in s:
+			if not v in nodes:
+				nodes[v] = ZSNode('c')
+			nodes[nid].addkid(nodes[v])
+	return nodes[-1]
 
 def t2zst(t, names):
 	"""
@@ -692,8 +727,7 @@ def t2zst(t, names):
 	if type(t) == Tree:
 		return pct2zst(t, names)
 	else:
-		t = ft_nr2pt(t, names)
-		return pct2zst(t, names)
+		return ft_nr2pt(t, names)
 	
 	
 	
