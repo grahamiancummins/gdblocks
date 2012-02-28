@@ -50,8 +50,23 @@ Node; An integer, which refers to a node in a Tree, obeying the sign convention
 
 """
 
+#TODO: There are too many types of "Tree" here, due to 3rd party libraries
+#using different formats. Pycluster has a poor internal representation of
+#trees, and I added a representation for consensus trees. ZhangShasha has a
+#sensible "pythonic" form of tree (with Node objects that have any number of
+#children), but this class doesn't provide an attribute for the probability
+#of occurence used by consensus trees. The most sensible way to store trees
+#would be as gd.Doc instances (which are, indeed, flexible trees already).
+#Then the various methods such as "cut" and zssdist would need to be reworked
+#to correctly convert the tree from Doc to appropriate form first and then
+#apply the opperation, and the methods like dtree should return Doc. This
+#would insulate client code (currently in timingInfo and selectUI) from the
+#silly proliferation of trees. For now, though, I'll leave it as is I guess.
+
+
 from __future__ import print_function, unicode_literals
 import numpy as np
+import gicdat.doc as gd
 from gicdat.util import infdiag
 from mixmod import mmcall
 try:
@@ -536,12 +551,14 @@ def compat(c1 , c2):
 
 def contained_in(ft, ft2):
 	inft2 = set()
-	for f in ft2:
+	for f in ft2[0]:
 		inft2 = inft2.union(f)
 	new = []
-	for f in ft:
-		new.append(sorted(list(inft2.intersection(f))))
-	return new
+	for f in ft[0]:
+		nn = sorted(list(inft2.intersection(f)))
+		if len(nn)>1 and not nn in new:	
+			new.append(nn)
+	return (new, ft[1])
 
 def equal_clust_frac(ft1, ft2):
 	n = 0
@@ -617,6 +634,14 @@ def buildtree(ft, n, nr=None):
 	nodeids = {}
 	return nn
 
+def build_subset_tree(ctree):
+	inft2 = set()
+	for f in ft2:
+		inft2 = inft2.union(f)
+	new = []
+	
+	
+	
 	
 
 def ctree2dot(ft, names, nr=None):

@@ -453,6 +453,10 @@ def show_ctree(ct, labs=None, fig=1):
 	s = clust.ctree2dot(ct[0], labs, ct[1])
 	show_tree(s,fig=fig)
 
+def show_ztree(zt, fig=1):
+	show_tree(clust.zst2dot(zt), fig = fig)
+	
+
 def show_cell_clust(cell, mode='vdps', q=6000, fig=1,
                     save="/home/gic/Dropbox/wsu/clust", suf='', cn=None):
 	"""
@@ -549,8 +553,6 @@ def noise_tree(cond, nbs=20, noise= .1,  mode='vdps', q=6000, N = 14):
 		dm2 = np.maximum(dm2, 0)
 		trees.append(clust.dtree(dm2))
 	return clust.mrtree(trees)
-	
-	
 
 def random_dm(n, minv=0, maxv=1):
 	"""
