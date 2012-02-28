@@ -274,8 +274,6 @@ def tup2tree(t):
 	"""Restores a PyCluster Tree from the output of tree2tup"""
 	return Tree([Node(*n) for n in t])
 	
-
-
 def treecontains(tree, node, leaf):
 	'''
 	tree: Tree(N), node: Node, leaf: Node -> bool
@@ -742,6 +740,18 @@ def ft_nr2pt(ftt, names):
 				nodes[v] = ZSNode('c')
 			nodes[nid].addkid(nodes[v])
 	return nodes[-1]
+
+def anytree2dot(t, names=None):
+	if type(t) in [str, unicode]:
+		return t
+	elif type(t) in [tuple, list]:
+		return ctree2dot(t[0], names, t[1])
+	elif type(t) == Tree:
+		return tree2dot(t, names)
+	elif type(t) == ZSNode:
+		return zst2dot(t)
+	else:
+		raise ValueError("%s isn't a know type of Tree" % (type(t),))
 
 def t2zst(t, names):
 	"""
