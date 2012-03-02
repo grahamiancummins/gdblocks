@@ -49,20 +49,7 @@ Node; An integer, which refers to a node in a Tree, obeying the sign convention
 	a node.
 
 """
-
-#TODO: There are too many types of "Tree" here, due to 3rd party libraries
-#using different formats. Pycluster has a poor internal representation of
-#trees, and I added a representation for consensus trees. ZhangShasha has a
-#sensible "pythonic" form of tree (with Node objects that have any number of
-#children), but this class doesn't provide an attribute for the probability
-#of occurence used by consensus trees. The most sensible way to store trees
-#would be as gd.Doc instances (which are, indeed, flexible trees already).
-#Then the various methods such as "cut" and zssdist would need to be reworked
-#to correctly convert the tree from Doc to appropriate form first and then
-#apply the opperation, and the methods like dtree should return Doc. This
-#would insulate client code (currently in timingInfo and selectUI) from the
-#silly proliferation of trees. For now, though, I'll leave it as is I guess.
-
+#Copied a bunch of content to deprecated_select on 3/2/12. refactoring.
 
 from __future__ import print_function, unicode_literals
 import numpy as np
@@ -80,17 +67,17 @@ try:
 except:
 	from gicdat.control import report
 	report("Zhang-shasha is not found. pct2zst and zssdist in clust will fail")
-	
+
 
 
 def dt_first(dm, t):
 	'''
 	dm: DistMat(N), t: x -> ids: Partition1(N)
-	
+
 	A naive grouping function which groups dm using a threshold, t. It depends
 	on the ordering of dm, since it assigns each item to the same group as the
 	first other item with distance <=t.
-	
+
 	'''
 	centers=[]
 	ids = []
@@ -107,11 +94,11 @@ def dt_first(dm, t):
 def dt_hclust(dm, t):
 	'''
 	dm: DistMat(N), t: x -> ids: Partition(M, N)
-	
+
 	Partitions dm using hclustmean, which is a local implementation of mean-
 	distance heirarchical clustering. Stops when the maximum distance between 
 	clusters is <= t.
-	
+
 	'''
 	memb = [[i] for i in range(dm.shape[0])]
 	md = dm.max()
@@ -120,52 +107,8 @@ def dt_hclust(dm, t):
 	return memb
 
 DTHRESH = {'first':dt_first,
-			'hclust':dt_hclust,
-		}
-
-def hclustmean(dm, memb):
-	'''
-	dm: DistMat(N), memb: Partition(N, L)  -> ndm: DistMat(N-1), 
-		newmemb: Partition(N-1, L) 
-	
-	Performs one hierarchical clustering step using mean distance, based on the
-	distance matrix dm and the membership array memb. Called internally by hca.
-	
-	'''
-	dmi = infdiag(dm)
-	closest = np.unravel_index(dmi.argmin(), dmi.shape)
-	nm1 = len(memb[closest[0]])
-	nm2 = len(memb[closest[1]])
-	newc = memb[closest[0]]+memb[closest[1]]
-	leaveout = [i for i in range(dm.shape[0]) if not i in closest]
-	newmemb = [memb[i] for i in leaveout] + [newc]
-	ndist = (dm[closest[0],:]*nm1 + dm[closest[1],:]*nm2)/(nm1+nm2)
-	ndm = np.zeros((len(newmemb), len(newmemb)), dm.dtype)
-	ndm[-1,-1] = ndist[closest[0]]
-	ndist = ndist[leaveout]
-	ndm[-1,:-1] = ndist
-	ndm[:-1,-1] = ndist
-	ndm[:-1,:-1] = dm[leaveout,:][:,leaveout]
-	return (ndm, newmemb)
-
-
-def hca(dists, memb, nclust):
-	'''
-	dists: DistMat(N), memb: Partition(N, L), nclust: i  
-		-> (DistMat(nclust), Partition(nclust, L)) 
-	
-	Construct nclust clusters using agglomerative hierarchical clustering with
-	mean distance. The inputs dists and memb specify an existing clustering. If 
-	memb is false, it defaults to [ [i] for i in range(dists.shape[0])] (which 
-	correponds to no initial clustering.
-	
-	This implementation is slower than dtree (which uses pycluster)
-	'''
-	if not memb:
-		memb = [ [i] for i in range(dists.shape[0])]
-	while len(memb)>nclust:
-		dists, memb = hclustmean(dists, memb)
-	return dists, memb
+           'hclust':dt_hclust,
+           }
 
 def mixmodpartition(data, k,model="Gaussian_pk_Lk_Ck", reps = 1):
 	"""Wraps mixmod.mmcal(data, [k], model, False, reps), and returns the 
@@ -173,22 +116,14 @@ def mixmodpartition(data, k,model="Gaussian_pk_Lk_Ck", reps = 1):
 	d = mmcall(data, [k], model, False, reps)
 	return d['partition']
 
-#dtree(dists, **cargs)		
-#clust.cuttree(t, nclust)
-#clust.mediods(dists, nclust, **cargs)
-#clust.vtree(evts, **cargs)
-#clust.kmeans(evts, nclust, **cargs)
-
-#method: s, m, c, a    single-link, max, centroid, average 
-
 def dtree(dm, method='a'):
 	"""
 	dm: DistMat(N), method: s ('a') -> Tree(N)
-	
+
 	calls PyCluster.treecluster(method=method, distancematrix=dm), except that 
 	dm is copied, to protect from PyClusters INSANE behaviour of modifying dm 
 	in place. 
-	
+
 	"""
 	#warning: pycluster writes the dm by side effect!!!!!
 	dm = dm.copy()
@@ -197,14 +132,14 @@ def dtree(dm, method='a'):
 def vtree(dat, dist='e', method='a'):
 	"""
 	dat: N,M-#, dist: s ('e'), method: s ('a') -> Tree(N)
-	
+
 	calls PyCluster.treecluster(dat, dist=dist, method=method),
-	
+
 	This require that dat contain data smaples in rows, and that the distance
 	function is appropriate to use on the samples (e.g. the default dist='e' is 
 	the euclidean distance, and all PyCluster dist options are vector space 
 	distances).
-	
+
 	"""
 	#implicit transpose=0, aka samples are rows, and there is no mask or weight
 	return treecluster(dat, dist=dist, method=str(method))
@@ -228,11 +163,11 @@ def vtree(dat, dist='e', method='a'):
 def tree2dot(tree, names=None):
 	'''
 	tree: Tree(N), names: [ of s (*) -> s
-	
+
 	(*) if False, defaults to ['n0', 'n1', ... 'nN']
-	
+
 	Makes a representation of a tree object in the graphviz dot language. 
-	
+
 	'''
 	from matplotlib.cm import get_cmap
 	spectral = get_cmap('spectral')
@@ -273,28 +208,28 @@ def tree2tup(t):
 def tup2tree(t):
 	"""Restores a PyCluster Tree from the output of tree2tup"""
 	return Tree([Node(*n) for n in t])
-	
+
 def treecontains(tree, node, leaf):
 	'''
 	tree: Tree(N), node: Node, leaf: Node -> bool
-	
+
 	True if node in tree contains leaf (recursively), False otherwise. Both node
 	and leaf may be negative (node references) or non-negative (leaf
 	references). If node is non-negative this is the recursion edge-case, and
 	just tests node==leaf.
-	
+
 	'''
 	if node>=0:
 		return node==leaf
 	else:
 		n = tree[-node-1]
 		return (treecontains(tree, n.left, leaf) 
-		        or treecontains(tree, n.right, leaf))
+				or treecontains(tree, n.right, leaf))
 
 def treebranch(tree, node):
 	"""
 	tree: Tree, node: Node -> [ of i
-	
+
 	returns all the elements that are children of node in tree. If node is 
 	non-negative, this is the list [node], of corse. 
 	"""
@@ -307,10 +242,10 @@ def treebranch(tree, node):
 def treelevel(tree, node, leaf):
 	'''
 	tree: Tree(N), node: Node, leaf: Node -> i
-	
+
 	If treecontains(tree, node, leaf), the return value is the number of levels
 	down from node that leaf is found. Otherwise, it is -1
-	
+
 	'''
 	if node>=0:
 		if node==leaf:
@@ -325,16 +260,16 @@ def treelevel(tree, node, leaf):
 			if d == -1:
 				return -1
 		return d+1
-	
+
 def treeparent(tree, node):
 	"""
 	tree: Tree, node: Node -> None | Node(+)
-	
+
 	returns the node that is the direct parent of the input node. The input 
 	may be negative or non-negative. The return value will be negative (since 
 	a leaf is never a parent). If the specified node is the root (there is no 
 	parent) the return is None.
-	
+
 	"""
 	for i, n in enumerate(tree):
 		if tree[i].left == node or tree[i].right == node:
@@ -347,7 +282,7 @@ def treedist_lev(tree, n1, n2):
 
 	Returns the number of levels up the tree you need to climb from n1 to reach
 	a node that contains n2. Return is np.inf if one of the nodes is not in tree.
-	
+
 	Note that this is not a symettric function, since if one node is close to 
 	the root, all level distances will be very small (and also this is non-
 	intuitive, since such a node is usually an outlier that was clustered last).
@@ -363,17 +298,17 @@ def treedist_lev(tree, n1, n2):
 def treedist_levs(tree, n1, n2):
 	"""
 	tree: Tree, n1: Node, n2: Node -> i | inf
-	
+
 	Average of treedist_lev(tree, n1, n2) and treedist_lev(tree, n2, n1)
 	(thus symettric) 
-	
+
 	"""
 	return (treedist_lev(tree, n1, n2)+treedist_lev(tree, n2, n1))/2.0
-	
+
 def treedist_links(tree, n1, n2):
 	"""
 	tree: Tree, n1: Node, n2: Node -> i | inf
-	
+
 	Number of edges that need to be traversed to get from n1 to n2. This should 
 	be twice treedist_levs(tree, n1, n2), and somewhat faster to calculate. 
 	"""
@@ -390,7 +325,7 @@ def treedist_links(tree, n1, n2):
 def pairs(l):
 	"""
 	l: [ of ? -> [ of 2-[ of ?
-	
+
 	returns a list of pairs containing all unique pairs of items in list l.
 	This is a combination not a permutation, and also it assumes an item can't
 	be paired with itself. Length of the return, if the input length is N, 
@@ -405,12 +340,12 @@ def pairs(l):
 def cmptrees(t1, t2):
 	"""
 	t1:Tree(N), t2:Tree(N) ->op of M,M-# of i
-	
+
 	Compares two trees using treedist_links. This assumes that the trees
 	connect the same nodes (e.g. that the semantics of the item indexes in the 
 	trees are the same), but only checks for the syntax (that the trees have the 
 	same length, and thus that the set of actual indexes is the same). 
-	
+
 	The function checks all pairs of nodes, and compares their distance (in the
 	links sense) in t2, and t2. The matrix op is a 2D histogram, such that
 	op[i,j] specifies the number of pairs that had distance i+2 in t1, and
@@ -420,11 +355,11 @@ def cmptrees(t1, t2):
 	the first row/column. The size of op depends on how balanced the trees are.
 	It is large enough to contain the largest distance that occurs (in either
 	tree), which is on the range (log2(N), N+1).
-	
+
 	Identical trees will have only diagonal elements in op, so 
 	op.sum - np.diag(op).sum() gives a measure of dis-similarity between the 
 	trees.
-	
+
 	"""
 	if len(t1)!=len(t2):
 		raise ValueError("Can't compare trees of different sizes")
@@ -439,16 +374,16 @@ def cmptrees(t1, t2):
 		op[int(d1), int(d2)]+=1
 		md = max(md, max(d1, d2))
 	return op[2:md+1,2:md+1]
-	
+
 def branchlengths(t, n):
 	"""
 	t: Tree, n: i -> (i, i)
-	
+
 	returns a tuple (min, max) of the lengths of the various subtrees of 
 	node n in tree t. If n is a leaf (n>=0), this is (0, 0). Otherwise, min is 
 	the smallest number of edges required to get from n to a leaf, and max is 
 	the largest number possible.
-	
+
 	"""
 	if n>=0:
 		return (0, 0)
@@ -490,16 +425,16 @@ def _root(t):
 	if len(nodes)==1:
 		return nodes.pop()
 	return nodes
-	
+
 def treesort(t, lf=False, n=None):
 	"""
 	t: Tree, lf: t->s: [ of i
-	
+
 	s is an ordering of the leafs in t (e.g. a list containing one copy each of 
 	every non-negative integer in t), which depends on the structure of t
-	
+
 	lf specifies whether to sort "longest first".
-	
+
 	"""
 	if n is None:
 		n = _root(t)
@@ -526,7 +461,7 @@ def treesort(t, lf=False, n=None):
 def tclusters(t):
 	"""
 	t: Tree -> [ of [ of i
-	
+
 	Returns a partition list for the tree t
 	"""
 	return [treebranch(t, -i - 1) for i in range(len(t))]
@@ -534,7 +469,7 @@ def tclusters(t):
 def compat(c1 , c2):
 	"""
 	c1:[ of i, c2:[ of i -> t
-	
+
 	are cluters c1 and c2 compatible (aka identical, disjoint, or nested)
 	"""
 	c1 = set(c1)
@@ -581,7 +516,7 @@ def clustcounts(trees):
 
 def _tupsort(t1, t2):
 	return cmp(len(t1), len(t2)) or cmp(t1, t2)
-	
+
 def mrtree(trees):
 	atc = clustcounts(trees)
 	ft = [k for k in atc if atc[k] > len(trees)/2.0]
@@ -598,7 +533,7 @@ def _lchild(t, z):
 				ii = i
 				ll = l
 	return ii
-	
+
 def buildtree(ft, n, nr=None):
 	nn = [[set(range(n)), None, None, None]]
 	if nr!=None:
@@ -632,15 +567,52 @@ def buildtree(ft, n, nr=None):
 	nodeids = {}
 	return nn
 
-def build_subset_tree(ctree):
-	inft2 = set()
-	for f in ft2:
-		inft2 = inft2.union(f)
-	new = []
+
+
+def _zt2dict(zt):
+	d = {'lab':zt.label, 'kids':[]}
+	for k in zt.children:
+		d['kids'].append(_zt2dict(k))
+	return d
+
+def _dict2zt(d):
+	n = ZSNode(d['lab'])
+	for kn in d['kids']:
+		n.addkid(_dict2zt(kn))
+	return n
+
+def reduce_zt(zt):
+	d = _zt2dict(zt)
+	def check(n):
+		if len(n['kids']) == 1:
+			return n['kids']
+		elif len(n['kids'])>2:
+			return []
+		fuse = []
+		drop = []
+		for k in n['kids']:
+			v = check(k)
+			if v != None:
+				fuse.extend(v)
+				drop.append(k)
+		if drop:
+			for k in drop:
+				n['kids'].remove(k)
+			n['kids'].extend(fuse)
+			return check(n)
+		else:
+			return None
+	check(d)
+	if len(d['kids']) == 1:
+		d = d['kids'][0]
 	
+	return _dict2zt(d)
+
 	
-	
-	
+def comparable_ctrees(t1, t2, names):
+	t1c = ft_nr2pt(contained_in(t1, t2), names)
+	t2c = ft_nr2pt(contained_in(t2, t1), names)
+	return (reduce_zt(t1c), reduce_zt(t2c))
 
 def ctree2dot(ft, names, nr=None):
 	tree = buildtree(ft, len(names), nr)
@@ -667,7 +639,7 @@ def ctree2dot(ft, names, nr=None):
 def clustcompatscore(ct1, ct2):
 	"""
 	each ct is (ft, nr)
-	
+
 	"""
 	s = 0
 	for i1, c1 in enumerate(ct1[0]):
@@ -681,7 +653,7 @@ def clustcompatscore(ct1, ct2):
 def pct2zst(t, names):
 	"""
 	t: Tree -> ZSNode
-	
+
 	Convert a pycluster Tree into the tree type used by Zhang-shasha. The 
 	return type is a zss.test_tree.Node, containing the root of the tree.
 	"""
@@ -697,27 +669,29 @@ def pct2zst(t, names):
 				n.addkid(addnode(t, k) )
 		return n
 	return addnode(t, _root(t))
-	
+
+def _traverse(zt):
+	order = [zt]
+	for k in zt.children:
+		order.extend(_traverse(k))
+	return order
+
 def zst2dot(zt):
 	"""
 	zt : ZSNode -> s
-	
+
 	Return a dot language representation of the ZSNode zt
 	"""
 	gv = ['digraph G {']
 	used = []
-	def relabel(n):
-		if n.label in used:
-			i = 2
-			while "%s%i" % (n.label, i) in used:
-				i+=1
-			n.label = "%s%i" % (n.label, i)
-		used.append(n.label)
+	ft = _traverse(zt)
+	for i, n in enumerate(ft):
+		n.dotid = "n%i" % (i,)
+		gv.append('%s [label="%s"];' % (n.dotid, n.label))
 	def addnode(n):
-		relabel(n)
 		for k in n.children:
 			addnode(k)
-			gv.append('"%s" -> "%s";' % (n.label, k.label))
+			gv.append('%s -> %s;' % (n.dotid, k.dotid))
 	addnode(zt)
 	gv.append("}")
 	return "\n".join(gv)	
@@ -742,6 +716,11 @@ def ft_nr2pt(ftt, names):
 	return nodes[-1]
 
 def anytree2dot(t, names=None):
+	##	This implementation is prefered, but currently loses reliability measures 
+	##	from ctrees	
+	##	if type(t) != ZSNode:
+	##		t = t2zst(t, names)
+	##	return zst2dot(t)
 	if type(t) in [str, unicode]:
 		return t
 	elif type(t) in [tuple, list]:
@@ -753,23 +732,39 @@ def anytree2dot(t, names=None):
 	else:
 		raise ValueError("%s isn't a know type of Tree" % (type(t),))
 
+
+def _clean_internals(zt):
+	if zt.children:
+		zt.label='c'
+		for k in zt.children:
+			_clean_internals(k)
+
 def t2zst(t, names):
 	"""
 	distributer function that checks the type of tree structure t and calls the 
 	appropriate *2zst function to produce a Zhang-shasha compatible tree.
-	
+
 	"""
-	if type(t) == Tree:
+	if type(t) == ZSNode:
+		_clean_internals(t)
+		return t
+	elif type(t) == Tree:
 		return pct2zst(t, names)
 	else:
 		return ft_nr2pt(t, names)
-	
-	
-	
+
+def comp_ctree_zssdist(t1, t2, names):
+	c1, c2 = comparable_ctrees(t1, t2, names)
+	d = float(zssdist(c1, c2, names))
+	nn = len(_traverse(c1)) + len(_traverse(c2))
+	if not nn:
+		return 100
+	return d/nn
+
 def zssdist(t1, t2, names):
 	"""
 	t1: Tree, t2:Tree -> x
-	
+
 	Return the edit distance, as computed by zss.compare, between t2zst-compatible trees t1, t2
 	"""
 	t1, t2 = map(lambda x:t2zst(x, names), [t1, t2])
