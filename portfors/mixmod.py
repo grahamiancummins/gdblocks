@@ -17,11 +17,16 @@
 #
 
 import numpy as np
+from numpy import linalg
 from numpy.random import randn
 from tempfile import mkdtemp
 import os
 import gicdat.doc as gd
-from gicdat.enc import astuple
+from gicdat.enc import astuple, flat
+
+
+MMCMD = os.path.join(os.environ['HOME'], 'bin/mixmod')
+
 
 
 def _parsemm(l):
@@ -126,7 +131,7 @@ def mmcall(data, clusters, model="Gaussian_pk_Lk_Ck", weighted=False, reps=1):
 	bpart = []
 	for i in range(reps):
 		try:
-			os.system("mixmod control.xem")
+			os.system("%s control.xem" % MMCMD)
 			out = open('numericComplete.txt').readlines()
 			if data.shape[1]==1:
 				mod = _parsemm1d(out)
@@ -183,3 +188,24 @@ def _wlcf():
 	dat[eoo]+=3	
 	_writeMixControl(os.getcwd(), dat, [1,2,3], "Gaussian_pk_Lk_Ck", False)
 	
+def evaluate(mm, pts):
+	nd = len(mm[mm['components'][0]]['mean'])
+	pts = np.array(pts)
+	res = np.zeros( (len(pts), len(mm['components']) ) )
+	for j, c in enumerate(mm['components']):
+		w = mm['proportions'][j]
+		mea = np.array(mm[c]['mean'])
+		if nd == 1:
+			sig = mm[c]['cov'][0][0]
+			norm = 1.0 / np.sqrt( 2*np.pi*sig)
+			p = pts.flatten() - mea[0]
+			e = (p**2)/(2*sig)
+			res[:,j] = w*norm*np.exp(-1*e) 
+		else:
+			norm = 1.0 / ( np.sqrt(linalg.det(mm[c]['cov']))*(2*np.pi)**(nd/2.0))
+			icov = linalg.inv(mm[c]['cov'])	
+			for i, p in enumerate(pts):
+				x = p - mea
+				e = -.5*np.dot(np.dot(x, icov), x)
+				res[i,j] = w*norm*np.exp(e)
+	return res.sum(1)
