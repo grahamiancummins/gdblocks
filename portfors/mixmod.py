@@ -189,8 +189,10 @@ def _wlcf():
 	_writeMixControl(os.getcwd(), dat, [1,2,3], "Gaussian_pk_Lk_Ck", False)
 	
 def evaluate(mm, pts):
-	nd = len(mm[mm['components'][0]]['mean'])
 	pts = np.array(pts)
+	if len(mm['components']) == 0:
+		return np.ones(pts.shape[0])/float(pts.shape[0])
+	nd = len(mm[mm['components'][0]]['mean'])
 	res = np.zeros( (len(pts), len(mm['components']) ) )
 	for j, c in enumerate(mm['components']):
 		w = mm['proportions'][j]

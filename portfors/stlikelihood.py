@@ -22,6 +22,9 @@ from __future__ import print_function, unicode_literals
 from mixmod import mmcall, evaluate
 from gicdat.enc import flat
 import numpy as np
+import matplotlib.pyplot as plt
+from selectUI import stimnames
+from gicdat.doc import Doc
 
 """
 cd -> CellDoc
@@ -31,7 +34,31 @@ cond -> IntIO
 
 """
 
-def spikes_from(cond, stim):
+def likelihood(gmm, st, mode = 'log'):
+	"""
+	returns a measure of the probability of spike train st under model gmm.
+	mode may be:
+	
+	log: conventional log likelihood. This measure makes the fewest assumptions,
+		but is also monotonically decreasing with len(st) (each actual event is
+		improbable, so any possible long event sequence is massively improbable)
+	av: log of the average of the activation for each spike. Essentially assumes
+		all spikes are independent. A spike train with many spikes, a few of 
+		which are in strongly excluded regions of the model, may still have
+		relatively good likelihood. 
+	la: the log measure, devided by the length of the spike train.
+	
+	"""
+	acts = evaluate(gmm, st)
+	if mode == 'log':
+		return np.log(acts).sum()
+	elif mode == 'av':
+		return np.log(acts.mean())
+	elif mode == 'la':
+		return np.log(acts).sum()/len(st)
+	
+
+def spikes_from(cond, stim, flatten = True):
 	"""
 	return a flat list of every spike in cond['evts'] resulting from stmulus 
 	stim (int). 
@@ -39,25 +66,148 @@ def spikes_from(cond, stim):
 	"""
 	resps = [cond['evts'][i] for i in range(len(cond['evts'])) 
 	         if cond['stims'][i] == stim]
-	return flat(resps)
+	if flatten:
+		return flat(resps)
+	else:
+		return resps
 
-
-def response_densities(cond, ncent = (2, 8)):
+def response_densities(cond, mcent = 8, nrep=3, stims = None, dsd=10000):
 	"""
 	return a list l such that l[i] = is a gmm of the responses to stimulus i.
 	
 	Since these are 1D models, the underlying mixmod call always uses PkLkCk,
-	and only one repeat, but ncent specifies the min and max values of the 
-	number of centers to try.
+	but mcent specifies the max number of centers to try, nrep the number of 
+	repeats to use.
+	
+	stims may be a list, which restricts the set of stimuli that are modeled
+	(by default, it is all presented stimuli).
+	
+	If the number of spikes evoked by a stimulus is very small, mixmod errors
+	will result. This function will not try to calculate a model based on fewer
+	than 2 spikes per center, reguardless of the value of mcent. For response
+	groups with at least two spikes, mcent may be reduced. Responses with no
+	spikes are modeled with a 0-component model (the dictionary
+	{'components':()}. mixmod.evaluate on such a model will return a uniform
+	probability normalized passed-in range, so this behavior is equivalent to a
+	uniform prior. Responses with exactly 1 spike are modeled as a single
+	center, with mean at the time of that spike, and standard deviation
+	specified by the free parameter dsd.
+	
+	This function adds the key "responses" to the resulting model dictionaries,
+	containing the source spike trains
 	
 	"""
-	cents = apply(range, ncent)
-	stims = set(cond['stims'])
+	if stims is None:
+		stims = set(cond['stims'])
 	l = [None for _ in range(max(stims)+1)]
 	for s in stims:
-		sf = spikes_from(cond, s)
-		if sf:
-			l[s] = mmcall(np.array(sf)[:,np.newaxis], cents)	
+		sts = spikes_from(cond, s, False)
+		sf = flat(sts)
+		if len(sf)>1:
+			mc = int(min(mcent, np.ceil(len(sf)/2.0)))
+			l[s] = mmcall(np.array(sf)[:,np.newaxis], range(1, mc+1),
+			              reps = nrep)	
+		elif sf:
+			l[s] = {'proportions': (1.0,), 'c0': {'cov': ((dsd**2,),), 
+			                                    'mean': (sf[0],)}, 
+			      'bic': 0, 'components': ('c0',), 'partition': (0,)}
+		else:
+			l[s] = {'components':()}
+		l[s]['responses'] = sts
+			
 	return l
 
+def cell_resp_d(ce, **kw):
+	"""return a list of response_densities calls for each condition in CellExp
+	ce. Keyword arguments are passed to response_densities"""
+	conds = ce.keys(0, 'cond')
+	r = Doc()
+	names = stimnames(ce)
+	for c in ce.keys(0, 'cond'):
+		m = response_densities(ce[c], **kw)
+		md = Doc()
+		for i, sn in enumerate(names):
+			md[sn] = m[i]
+		r[c] = md
+	return r
 
+def group_resp_d(cd, **kw):
+	"""retur"""
+
+def show_cell_density(rd, xran = (0, 143000), 
+                      overlay =False):
+	""" 
+	rd is the result of cell_resp_d.  xran is the x range of the plot
+	Will glitch if the various conditions in rd used different stimulus sets - 
+	avoid this. If overlay, plot all data in one subplot in different colors
+	
+	"""
+	f  = plt.figure(1)
+	plt.clf()
+	cols = 'brgkcy'	
+	x = np.arange(xran[0], xran[1])
+	pad = .9
+	for i, sn in range(len(rd[0])):
+		for j, cn in enumerate(rd):	
+			if overlay:
+				col = cols[j]
+				siz = 10-2*j
+			else:
+				plt.subplot(1, len(rd), j+1)
+				col = 'k'
+				siz = 6
+			sf = r[i]['responses']
+			mm = evaluate(r[i], x)
+			if mm.max()-mm.min()>0:
+				mm = pad*mm/mm.max()
+			plt.plot(x, mm+i, linewidth=3, color=col)
+			sp = pad/(len(sf)+1)
+			for k in range(len(sf)):
+				if sf[k]:
+					y = np.ones(len(sf[k]))*(k+1)*sp + i
+					plt.plot(sf[k], y, '.', color = col, markersize=siz)
+	if not overlay:				
+		plt.subplot(1, len(rd),1)
+	plt.xlim(xran)
+	if names:
+		plt.yticks(range(len(names)), names)
+	if not overlay:
+		f.subplots_adjust(left=.04, right=.99, bottom=.03, top = .94, wspace=.05)	
+		for i in range(2, len(rd)+1):	
+			sp = plt.subplot(1, len(rd),i)
+			plt.xlim(xran)
+			sp.yaxis.set_visible(False)
+			sp.xaxis.set_visible(False)
+	f.canvas.draw()	
+
+
+def preference(rd, st, mode='log'):
+	"""
+	return an array of shape (len(rd), len(rd[0])) containing at i,j the 
+	result of likelihood(rd[i][j], st, mode)
+	
+	"""
+	resp = np.zeros((len(rd), len(rd[0])))
+	for i in range(resp.shape[0]):
+		for j in range(resp.shape[1]):
+			resp[i,j] = likelihood(rd[i][j], st, mode)
+	return resp
+			
+def pref_hists(rd, mode='log'):
+	s= []
+	c2 = []
+	o = []
+	for i in range(len(rd[0])):
+		for st in rd[0][i]['responses']:
+			if st:
+				p = preference(rd, st, mode)
+				s.append(p[0,i])
+				c2.append(p[1, i])
+				for ri in range(p.shape[1]):
+					if ri!=i:
+						o.extend(p[:,ri])
+	return (s, c2, o)
+
+def classify(rd, mode='log'):
+	pass
+	
