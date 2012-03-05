@@ -191,7 +191,7 @@ def _wlcf():
 def evaluate(mm, pts):
 	pts = np.array(pts)
 	if len(mm['components']) == 0:
-		return np.ones(pts.shape[0])/float(pts.shape[0])
+		return np.ones(pts.shape[0])/mm['support']
 	nd = len(mm[mm['components'][0]]['mean'])
 	res = np.zeros( (len(pts), len(mm['components']) ) )
 	for j, c in enumerate(mm['components']):

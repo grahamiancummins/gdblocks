@@ -21,6 +21,7 @@
 from __future__ import print_function, unicode_literals
 from mixmod import mmcall, evaluate
 from gicdat.enc import flat
+from gicdat.util import traverse
 import numpy as np
 import matplotlib.pyplot as plt
 from selectUI import stimnames
@@ -71,7 +72,8 @@ def spikes_from(cond, stim, flatten = True):
 	else:
 		return resps
 
-def response_densities(cond, mcent = 8, nrep=3, stims = None, dsd=10000):
+def response_densities(cond, mcent = 8, nrep=3, stims = None, 
+                       sppt = 163000, dsd=10000):
 	"""
 	return a list l such that l[i] = is a gmm of the responses to stimulus i.
 	
@@ -87,11 +89,11 @@ def response_densities(cond, mcent = 8, nrep=3, stims = None, dsd=10000):
 	than 2 spikes per center, reguardless of the value of mcent. For response
 	groups with at least two spikes, mcent may be reduced. Responses with no
 	spikes are modeled with a 0-component model (the dictionary
-	{'components':()}. mixmod.evaluate on such a model will return a uniform
-	probability normalized passed-in range, so this behavior is equivalent to a
-	uniform prior. Responses with exactly 1 spike are modeled as a single
-	center, with mean at the time of that spike, and standard deviation
-	specified by the free parameter dsd.
+	{'components':(), 'support':sppt}. mixmod.evaluate on such a model will
+	return a uniform probability if 1/sppt, so this behavior is equivalent to a
+	uniform prior over a region of size sppt. Responses with exactly 1 spike are
+	modeled as a single center, with mean at the time of that spike, and
+	standard deviation specified by the free parameter dsd.
 	
 	This function adds the key "responses" to the resulting model dictionaries,
 	containing the source spike trains
@@ -112,14 +114,16 @@ def response_densities(cond, mcent = 8, nrep=3, stims = None, dsd=10000):
 			                                    'mean': (sf[0],)}, 
 			      'bic': 0, 'components': ('c0',), 'partition': (0,)}
 		else:
-			l[s] = {'components':()}
+			l[s] = {'components':(), 'support':sppt}
 		l[s]['responses'] = sts
 			
 	return l
 
 def cell_resp_d(ce, **kw):
-	"""return a list of response_densities calls for each condition in CellExp
-	ce. Keyword arguments are passed to response_densities"""
+	"""return a Doc with keys for conditions in ce, each containing a doc
+	representing response_densities for that condition (these docs use the 
+	name of each stimulus to key the model of that stimulus as returned by
+	responses_densities). Keywords are passed to responses_densities"""
 	conds = ce.keys(0, 'cond')
 	r = Doc()
 	names = stimnames(ce)
@@ -132,7 +136,10 @@ def cell_resp_d(ce, **kw):
 	return r
 
 def group_resp_d(cd, **kw):
-	"""retur"""
+	"""returns a Doc with cell keys as cd, each containing a cell_resp_d for
+	that cell"""
+	nd = traverse(cd, 'cell', cell_resp_d, (), kw, 'patch')
+	return nd
 
 def show_cell_density(rd, xran = (0, 143000), 
                       overlay =False):
@@ -147,17 +154,19 @@ def show_cell_density(rd, xran = (0, 143000),
 	cols = 'brgkcy'	
 	x = np.arange(xran[0], xran[1])
 	pad = .9
-	for i, sn in range(len(rd[0])):
-		for j, cn in enumerate(rd):	
+	conds = rd.keys(0, 'cond')
+	stims = rd[conds[0]].keys(sort=cmp)
+	for i, sn in enumerate(stims):
+		for j, cn in enumerate(conds):	
 			if overlay:
 				col = cols[j]
 				siz = 10-2*j
 			else:
-				plt.subplot(1, len(rd), j+1)
+				plt.subplot(1, len(conds), j+1)
 				col = 'k'
 				siz = 6
-			sf = r[i]['responses']
-			mm = evaluate(r[i], x)
+			sf = rd[cn][sn]['responses']
+			mm = evaluate(rd[cn][sn], x)
 			if mm.max()-mm.min()>0:
 				mm = pad*mm/mm.max()
 			plt.plot(x, mm+i, linewidth=3, color=col)
@@ -167,47 +176,71 @@ def show_cell_density(rd, xran = (0, 143000),
 					y = np.ones(len(sf[k]))*(k+1)*sp + i
 					plt.plot(sf[k], y, '.', color = col, markersize=siz)
 	if not overlay:				
-		plt.subplot(1, len(rd),1)
+		plt.subplot(1, len(conds),1)
 	plt.xlim(xran)
-	if names:
-		plt.yticks(range(len(names)), names)
+	plt.yticks(range(len(stims)), stims)
 	if not overlay:
 		f.subplots_adjust(left=.04, right=.99, bottom=.03, top = .94, wspace=.05)	
-		for i in range(2, len(rd)+1):	
-			sp = plt.subplot(1, len(rd),i)
+		for i in range(2, len(conds)+1):	
+			sp = plt.subplot(1, len(conds),i)
 			plt.xlim(xran)
 			sp.yaxis.set_visible(False)
 			sp.xaxis.set_visible(False)
 	f.canvas.draw()	
 
-
-def preference(rd, st, mode='log'):
+def preference(rd, st, conds, stims, mode='log'):
 	"""
-	return an array of shape (len(rd), len(rd[0])) containing at i,j the 
-	result of likelihood(rd[i][j], st, mode)
+	rd: response density doc, st: spike train, conds: list of keys, 
+	stims: list of keys, mode: parameter for likelihood()
+	
+	return an array resp of shape (len(conds), len(stims)) containing at i,j the
+	result of likelihood(rd[conds[i]][stims[j]], st, mode)
 	
 	"""
-	resp = np.zeros((len(rd), len(rd[0])))
+	resp = np.zeros((len(conds), len(stims)))
 	for i in range(resp.shape[0]):
 		for j in range(resp.shape[1]):
-			resp[i,j] = likelihood(rd[i][j], st, mode)
+			resp[i,j] = likelihood(rd[conds[i]][stims[j]], st, mode)
 	return resp
-			
-def pref_hists(rd, mode='log'):
+
+
+def pref_hists(grd, mode='log'):
 	s= []
 	c2 = []
 	o = []
-	for i in range(len(rd[0])):
-		for st in rd[0][i]['responses']:
-			if st:
-				p = preference(rd, st, mode)
-				s.append(p[0,i])
-				c2.append(p[1, i])
-				for ri in range(p.shape[1]):
-					if ri!=i:
-						o.extend(p[:,ri])
+	conds = ['cond1', 'cond2']
+	for cell in grd.keys(0, 'cell'):
+		rd = grd[cell]
+		stims = rd['cond1'].keys(sort=cmp)
+		for i, sn in enumerate(stims):
+			for st in rd['cond1'][sn]['responses']:
+				if st:
+					p = preference(rd, st, conds, stims, mode)
+					s.append(p[0,i])
+					c2.append(p[1, i])
+					for ri in range(p.shape[1]):
+						if ri!=i:
+							o.extend(p[:,ri])
 	return (s, c2, o)
 
-def classify(rd, mode='log'):
-	pass
+def classify(grd, mode='log'):
+	cerr = []
+	conds = ['cond1', 'cond2']
+	for cell in grd.keys(0, 'cell'):
+		rd = grd[cell]
+		stims = rd['cond1'].keys(sort=cmp)
+		for i, sn in enumerate(stims):
+			for st in rd['cond1'][sn]['responses']:
+				if st:
+					print(i, st)
+					p = preference(rd, st, conds, stims, mode)
+					print(p)
+					c1i = np.argmax(p[0,:])
+					c1e = p[0,c1i]-p[0, i]
+					c2i = np.argmax(p[1, :])
+					c2e = p[1,c2i]-p[1, i]
+					print(c1i, c2i)
+					cerr.append( (c1e, c2e) )
+	return np.array(cerr)
+	
 	
