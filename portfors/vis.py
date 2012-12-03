@@ -66,7 +66,7 @@ def make_silloette(data, npts, col=(.8, .8, 1), **kwargs):
 
 def make_spectrogram(dat, npts, fs=333333.3, winwidth=None, 
                      window=None, fstart=0, fstop=120000, fstep=5000,
-                     cmap = 'gist_heat_r'):
+                     cmap = 'gist_heat_r', **kwargs):
 	tstep =int(round(dat.shape[0]/float(npts)))
 	winwidth = winwidth or tstep
 	if window:
@@ -85,7 +85,7 @@ def make_spectrogram(dat, npts, fs=333333.3, winwidth=None,
 		if window:
 			d = d * windowa
 		d = np.fft.rfft(d)
-		ft[i,:] = abs(d[ind])	
+		ft[i,:] = abs(d[ind][range(d[ind].shape[0]-1,-1,-1)])	
 	plt.imshow(ft.transpose(), aspect='auto')
 	if cmap:
 		plt.set_cmap(cmap)
@@ -108,7 +108,9 @@ def make_thumbnail(data, mode='silloette', npts=500,
 	f.subplots_adjust(left=0, right=1, bottom=0, top = 1)
 	f.canvas.draw()
 	s = StringIO.StringIO()
-	f.savefig(s, format='png')
+	f.savefig(s, format=kwargs.get('format', 'png'))
+	s.seek(0)
+	open('test.pdf', 'wb').write(s.read())
 	s.seek(0)
 	im = ImageOps.flip(Image.open(s))
 	if not show:
