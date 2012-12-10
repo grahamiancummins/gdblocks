@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-PDF = True
+PDF = False
 
 import matplotlib, os
 if PDF:
@@ -19,12 +19,14 @@ DEFAULTS = {
 	"condition": "cond1",
     "fig":1,
     "spec_ar":.5,
-    "spec_npts":1000, 
+    "spec_npts":2048, 
     "time_window":(0,200),
     "imformat":'png',
     "rast_fs":1000.0,
-    "rast_color":"b",
-    "rast_msize":3.0,
+    "rast_color":"k",
+    "rast_msize":16.0,
+    "png_dpi":300,
+    "fig_width":20,
     }
 if PDF:
 	DEFAULTS["imformat"]="pdf"
@@ -37,8 +39,18 @@ SPEC = {
         "cmap":'gist_heat_r',
         "winwidth":None,
         "window":None,
-        }   
+        }  
 
+
+def get_fig():
+	w = DEFAULTS['fig_width']
+	dpi = DEFAULTS['png_dpi']
+	ar = DEFAULTS['spec_ar']
+	f = plt.figure(1, figsize=(w, w*ar), dpi = dpi)
+	plt.clf()
+	f.canvas.draw()
+	return f
+	
 
 def save_spectrogram(stim, stim_info, npts=500, ar=.15, time_window=(0, 200), save = "pdf"):
 	infilename = os.path.join(ti.STIMDIR, stim_info['file']) 
@@ -49,10 +61,7 @@ def save_spectrogram(stim, stim_info, npts=500, ar=.15, time_window=(0, 200), sa
 	tail_pad = np.zeros((time_window[1] - stim_info['duration'])*fs)
 	data = np.concatenate([lead_pad, data, tail_pad])
 	y = int(round(npts*ar))
-	w = npts/100
-	f = plt.figure(1, figsize=(w, w*ar), dpi = 100)
-	plt.clf()
-	f.canvas.draw()
+	f = get_fig()
 	plt.subplot(111, frameon=False)
 	vis.make_spectrogram(data, npts, **SPEC)
 	a = f.get_axes()[0]
@@ -65,9 +74,7 @@ def save_spectrogram(stim, stim_info, npts=500, ar=.15, time_window=(0, 200), sa
 	return outfile
 
 def save_raster(file_name, evts, **options):
-	f = plt.figure(1)
-	plt.clf()
-	f.canvas.draw()
+	f = get_fig()
 	for i in range(len(evts)):
 		x = np.array(evts[i])/options["rast_fs"]
 		y = np.ones_like(x)*(i+1)
