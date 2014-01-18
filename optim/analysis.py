@@ -19,207 +19,206 @@ import os, cPickle
 
 
 def makeHist(samps, t):
-	num = zeros(t.shape[0], t.dtype.char)
-	past = 0
-	if len(samps)>0:
-		for i in range(t.shape[0]):
-			env = nonzero(samps<t[i]).shape[0]
-			num[i] = env - past
-			past = env
-	return concatenate([t[:,NewAxis],num[:,NewAxis]], 1)	
-
+    num = zeros(t.shape[0], t.dtype.char)
+    past = 0
+    if len(samps) > 0:
+        for i in range(t.shape[0]):
+            env = nonzero(samps < t[i]).shape[0]
+            num[i] = env - past
+            past = env
+    return concatenate([t[:, NewAxis], num[:, NewAxis]], 1)
 
 
 def make2dHist(a, b1, b2):
-	b1=arange(b1).astype(Float32)
-	b1=(b1/b1.max())*(a[:,0].max()-a[:,0].min())
-	b1=b1+a[:,0].min()
-	b2=arange(b2).astype(Float32)
-	b2=(b2/b2.max())*(a[:,1].max()-a[:,1].min())
-	b2=b2+a[:,1].min()
-	out=zeros((b1.shape[0], b2.shape[0]), a.dtype.char)
-	for i in range(1, b1.shape[0]):
-		inds=nonzero(logical_and(a[:,0]>=b1[i-1], a[:,0]<=b1[i]))
-		evts=take(a[:,1], inds)
-		if not len(evts):
-			continue
-		q=makeHist(evts, b2)
-		out[i, :]=q[:,1]
-	return out
+    b1 = arange(b1).astype(Float32)
+    b1 = (b1 / b1.max()) * (a[:, 0].max() - a[:, 0].min())
+    b1 = b1 + a[:, 0].min()
+    b2 = arange(b2).astype(Float32)
+    b2 = (b2 / b2.max()) * (a[:, 1].max() - a[:, 1].min())
+    b2 = b2 + a[:, 1].min()
+    out = zeros((b1.shape[0], b2.shape[0]), a.dtype.char)
+    for i in range(1, b1.shape[0]):
+        inds = nonzero(logical_and(a[:, 0] >= b1[i - 1], a[:, 0] <= b1[i]))
+        evts = take(a[:, 1], inds)
+        if not len(evts):
+            continue
+        q = makeHist(evts, b2)
+        out[i, :] = q[:, 1]
+    return out
+
 
 class GuiAnalysisModule:
-	def __init__(self, gui):
-		self.gui=gui
+    def __init__(self, gui):
+        self.gui = gui
 
-	def makeMenus(self):
-		self.gui.refreshMenu("Analysis", self.menu("UI_"))
+    def makeMenus(self):
+        self.gui.refreshMenu("Analysis", self.menu("UI_"))
 
-	def menu(self, filter):
-		d = {}
-		for k in dir(self):
-			if k.startswith(filter):
-				d[k[3:]] = getattr(self, k)
-		return(d)
+    def menu(self, filter):
+        d = {}
+        for k in dir(self):
+            if k.startswith(filter):
+                d[k[3:]] = getattr(self, k)
+        return (d)
 
-	def UI_removeDuplicates(self, event):
-		dat=self.gui.data.data[:,1:]
-		unique=[0]
-		for i in range(1, dat.shape[0]):
-			if any(alltrue(take(dat, unique)==dat[i])):
-				continue
-			unique.append(i)
-		ne=dat.shape[0]		
-		self.gui.data.data=take(self.gui.data.data, array(unique))
-		nnd=self.gui.data.data.shape[0]
-		nd=ne-nnd
-		self.gui.report("found and removed %i duplicates" % nd)
-		self.gui.showInfo()
-	
-	def UI_addCondition(self, event):
-		l=self.gui.askParam([{"Name":"Parameter",
-							"Type":"List",
-							"Value":self.gui.data.labels},
-							{"Name":"Min",
-							"Value":-1.0},
-							{"Name":"Max",
-							"Value":100.0}])
-		if not l:
-			return
-		colid=self.gui.data.labels.index(l[0])
-		self.gui.condition[l[0]]=(l[1], l[2])
-		self.gui.showInfo()
-	
-	def UI_clearConditions(self, event):
-		self.gui.condition={}
-		self.gui.showInfo()
+    def UI_removeDuplicates(self, event):
+        dat = self.gui.data.data[:, 1:]
+        unique = [0]
+        for i in range(1, dat.shape[0]):
+            if any(alltrue(take(dat, unique) == dat[i])):
+                continue
+            unique.append(i)
+        ne = dat.shape[0]
+        self.gui.data.data = take(self.gui.data.data, array(unique))
+        nnd = self.gui.data.data.shape[0]
+        nd = ne - nnd
+        self.gui.report("found and removed %i duplicates" % nd)
+        self.gui.showInfo()
 
-	def UI_showConditons(self, event):
-		s=""
-		for k in self.gui.condition.keys():
-			v=self.gui.condition[k]
-			s+="%s %.4f to %.4f\n" % (k, v[0], v[1])
-		self.gui.report(s)	
+    def UI_addCondition(self, event):
+        l = self.gui.askParam([{"Name": "Parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels},
+                               {"Name": "Min",
+                                "Value": -1.0},
+                               {"Name": "Max",
+                                "Value": 100.0}])
+        if not l:
+            return
+        colid = self.gui.data.labels.index(l[0])
+        self.gui.condition[l[0]] = (l[1], l[2])
+        self.gui.showInfo()
 
-	def UI_cropToConditions(self, event):
-		dat=self.gui.getConditionalData()
-		self.gui.data.data=dat
-		self.gui.condtion={}
-		self.gui.showInfo()
-		
-	def UI_showParameterStats(self, event):
-		dat=self.gui.getConditionalData()
-		out=[]
-		for i,l in enumerate(self.gui.data.labels):
-			d=dat[:,i]
-			s=(l, d.min(), d.max(), d.mean(), d.stddev())
-			out.append("%s: min: %.4g, max:%.4g, mean:%.4g, std:%.4g" % s)
-		s="\n".join(out)
-		print s
-			
+    def UI_clearConditions(self, event):
+        self.gui.condition = {}
+        self.gui.showInfo()
 
-	def UI_parVsFit(self, event=None):
-		n = self.gui.askUsr("Which parameter", self.gui.data.labels)
-		i = self.gui.data.labels.index(n)
-		a= take(self.gui.getConditionalData(),[0,i], 1)
-		g=self.gui.makeGraph()
-		g.addPlot(a, n, style="points")
+    def UI_showConditons(self, event):
+        s = ""
+        for k in self.gui.condition.keys():
+            v = self.gui.condition[k]
+            s += "%s %.4f to %.4f\n" % (k, v[0], v[1])
+        self.gui.report(s)
 
-	def UI_fitVsPar(self, event=None):
-		n = self.gui.askParam([{"Name":"Which parameter",
-								"Type":"List",
-								"Value":self.gui.data.labels},
-							   {"Name":"Number of points",
-								"Value":100}])
-		i = self.gui.data.labels.index(n[0])
-		npts=n[1]
-		a= take(self.gui.getConditionalData(),[i,0], 1)
-		ind=argsort(a[:,0])
-		a=take(a, ind)
-		pstep=(a[-1,0]-a[0,0])/npts
-		pr=arange(a[0,0], a[-1,0], pstep)
-		fmin=zeros(pr.shape, Float32)
-		fmax=zeros(pr.shape, Float32)
-		fmean=zeros(pr.shape, Float32)
-		last=0
-		for i in range(pr.shape[0]):
-			next=nonzero(a[:,0]>pr[i])[0]
-			if next<=last:
-				if i>0:
-					fmin[i]=fmin[i-1]
-					fmax[i]=fmax[i-1]
-					fmean[i]=fmean[i-1]
-			else:
-				fits=a[last:next,1]
-				fmin[i]=fits.min()
-				fmax[i]=fits.max()
-				fmean[i]=fits.mean()
-			last=next	
-		
-		g=self.gui.makeGraph()
-		a=transpose(array([pr, fmin]))
-		g.addPlot(a, "min")
-		a=transpose(array([pr, fmax]))
-		g.addPlot(a, "max")
-		a=transpose(array([pr, fmean]))
-		g.addPlot(a, "mean")
+    def UI_cropToConditions(self, event):
+        dat = self.gui.getConditionalData()
+        self.gui.data.data = dat
+        self.gui.condtion = {}
+        self.gui.showInfo()
 
-		
-	def UI_fitVsPar1Par2(self, event=None):
-		n = self.gui.askParam([{"Name":"First Parameter",
-								"Type":"List",
-								"Value":self.gui.data.labels},
-							   {"Name":"Second Parameter",
-								"Type":"List",
-								"Value":self.gui.data.labels},
-							   {"Name":"Show",
-								"Type":"List",
-								"Value":["min", "max", "mean"]},
-							   {"Name":"Width",
-								"Value":2},
-							   ])
-		i = self.gui.data.labels.index(n[0])
-		j = self.gui.data.labels.index(n[1])
-		a= take(self.gui.getConditionalData(),[i,j, 0], 1)		
-		g=self.gui.makeGraph()
-		
-		pn=g.addPlot(a[:,:2], "fit", style="points", stat=n[2],width=n[3])
-		pad = (a[:,2].max()-a[:,2].min())/5
-		ran=(a[:,2].min()-pad,a[:,2].max())
-		g.set_color(pn, a[:,2],cs='hot', r=ran)
-		
-
-	def UI_Histogram(self, event):
-		n = self.gui.askUsr("Which parameter", self.gui.data.labels)
-		i = self.gui.data.labels.index(n)
-		a= self.gui.getConditionalData()[:,i]
-		g=self.gui.makeGraph()
-		t=a.max()-a.min()
-		p=t*.05
-		t=arange(a.min()-p, a.max()+p, p)
-		a=makeHist(a, t)
-		g.addPlot(a, n, style="hist")
+    def UI_showParameterStats(self, event):
+        dat = self.gui.getConditionalData()
+        out = []
+        for i, l in enumerate(self.gui.data.labels):
+            d = dat[:, i]
+            s = (l, d.min(), d.max(), d.mean(), d.stddev())
+            out.append("%s: min: %.4g, max:%.4g, mean:%.4g, std:%.4g" % s)
+        s = "\n".join(out)
+        print s
 
 
-	def UI_2DHist(self, event):
-		n = self.gui.askParam([{"Name":"Conditioning Parameter",
-								"Type":"List",
-								"Value":self.gui.data.labels},
-							   {"Name":"Varying Parameter",
-								"Type":"List",
-								"Value":self.gui.data.labels}
-							   ])
+    def UI_parVsFit(self, event=None):
+        n = self.gui.askUsr("Which parameter", self.gui.data.labels)
+        i = self.gui.data.labels.index(n)
+        a = take(self.gui.getConditionalData(), [0, i], 1)
+        g = self.gui.makeGraph()
+        g.addPlot(a, n, style="points")
 
-		i = self.gui.data.labels.index(n[0])
-		i2= self.gui.data.labels.index(n[1])
-		a= take(self.gui.getConditionalData(), [i,i2], 1)
-		g=self.gui.makeGraph()
-		a=make2dHist(a, 10, 20)
-		print a
-		g.addPlot(a, 'hist', style="ScalingImage", colorrange=(a.min(), a.max()))
+    def UI_fitVsPar(self, event=None):
+        n = self.gui.askParam([{"Name": "Which parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels},
+                               {"Name": "Number of points",
+                                "Value": 100}])
+        i = self.gui.data.labels.index(n[0])
+        npts = n[1]
+        a = take(self.gui.getConditionalData(), [i, 0], 1)
+        ind = argsort(a[:, 0])
+        a = take(a, ind)
+        pstep = (a[-1, 0] - a[0, 0]) / npts
+        pr = arange(a[0, 0], a[-1, 0], pstep)
+        fmin = zeros(pr.shape, Float32)
+        fmax = zeros(pr.shape, Float32)
+        fmean = zeros(pr.shape, Float32)
+        last = 0
+        for i in range(pr.shape[0]):
+            next = nonzero(a[:, 0] > pr[i])[0]
+            if next <= last:
+                if i > 0:
+                    fmin[i] = fmin[i - 1]
+                    fmax[i] = fmax[i - 1]
+                    fmean[i] = fmean[i - 1]
+            else:
+                fits = a[last:next, 1]
+                fmin[i] = fits.min()
+                fmax[i] = fits.max()
+                fmean[i] = fits.mean()
+            last = next
+
+        g = self.gui.makeGraph()
+        a = transpose(array([pr, fmin]))
+        g.addPlot(a, "min")
+        a = transpose(array([pr, fmax]))
+        g.addPlot(a, "max")
+        a = transpose(array([pr, fmean]))
+        g.addPlot(a, "mean")
 
 
+    def UI_fitVsPar1Par2(self, event=None):
+        n = self.gui.askParam([{"Name": "First Parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels},
+                               {"Name": "Second Parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels},
+                               {"Name": "Show",
+                                "Type": "List",
+                                "Value": ["min", "max", "mean"]},
+                               {"Name": "Width",
+                                "Value": 2},
+        ])
+        i = self.gui.data.labels.index(n[0])
+        j = self.gui.data.labels.index(n[1])
+        a = take(self.gui.getConditionalData(), [i, j, 0], 1)
+        g = self.gui.makeGraph()
 
-# 
+        pn = g.addPlot(a[:, :2], "fit", style="points", stat=n[2], width=n[3])
+        pad = (a[:, 2].max() - a[:, 2].min()) / 5
+        ran = (a[:, 2].min() - pad, a[:, 2].max())
+        g.set_color(pn, a[:, 2], cs='hot', r=ran)
+
+
+    def UI_Histogram(self, event):
+        n = self.gui.askUsr("Which parameter", self.gui.data.labels)
+        i = self.gui.data.labels.index(n)
+        a = self.gui.getConditionalData()[:, i]
+        g = self.gui.makeGraph()
+        t = a.max() - a.min()
+        p = t * .05
+        t = arange(a.min() - p, a.max() + p, p)
+        a = makeHist(a, t)
+        g.addPlot(a, n, style="hist")
+
+
+    def UI_2DHist(self, event):
+        n = self.gui.askParam([{"Name": "Conditioning Parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels},
+                               {"Name": "Varying Parameter",
+                                "Type": "List",
+                                "Value": self.gui.data.labels}
+        ])
+
+        i = self.gui.data.labels.index(n[0])
+        i2 = self.gui.data.labels.index(n[1])
+        a = take(self.gui.getConditionalData(), [i, i2], 1)
+        g = self.gui.makeGraph()
+        a = make2dHist(a, 10, 20)
+        print a
+        g.addPlot(a, 'hist', style="ScalingImage", colorrange=(a.min(), a.max()))
+
+
+#
 # import os, re
 # from mien.math.sigtools import *
 # from cPickle import load, dump

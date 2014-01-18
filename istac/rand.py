@@ -27,38 +27,41 @@ TSSEED = 121212
 
 
 def evtjitter(jit, ns, cid):
-	if FROZEN:
-		rstate = np.random.get_state()
-		np.random.seed(JSEED + 100*cid)
-	j = np.round( np.random.normal(0.0, jit, ns) ).astype(np.int32)
-	if FROZEN:
-		np.random.set_state(rstate)
-	return j
+    if FROZEN:
+        rstate = np.random.get_state()
+        np.random.seed(JSEED + 100 * cid)
+    j = np.round(np.random.normal(0.0, jit, ns)).astype(np.int32)
+    if FROZEN:
+        np.random.set_state(rstate)
+    return j
+
 
 def stimulus(ns):
-	if FROZEN:
-		rstate = np.random.get_state()
-		np.random.seed(STIMSEED)
-	j= np.random.randn(ns)
-	if FROZEN:
-		np.random.set_state(rstate)
-	return j
+    if FROZEN:
+        rstate = np.random.get_state()
+        np.random.seed(STIMSEED)
+    j = np.random.randn(ns)
+    if FROZEN:
+        np.random.set_state(rstate)
+    return j
+
 
 def ucevts(ns, size, eid=0):
-	if FROZEN:
-		rstate = np.random.get_state()
-		np.random.seed(UCSEED + 100*eid)
-	j= np.random.permutation(ns)[:size]
-	if FROZEN:
-		np.random.set_state(rstate)
-	return j
-	
+    if FROZEN:
+        rstate = np.random.get_state()
+        np.random.seed(UCSEED + 100 * eid)
+    j = np.random.permutation(ns)[:size]
+    if FROZEN:
+        np.random.set_state(rstate)
+    return j
+
+
 def testset(ns, tid):
-	if FROZEN:
-		rstate = np.random.get_state()
-		np.random.seed(TSSEED + 100*tid)
-	j= np.random.permutation(ns)
-	if FROZEN:
-		np.random.set_state(rstate)
-	return j
+    if FROZEN:
+        rstate = np.random.get_state()
+        np.random.seed(TSSEED + 100 * tid)
+    j = np.random.permutation(ns)
+    if FROZEN:
+        np.random.set_state(rstate)
+    return j
 	

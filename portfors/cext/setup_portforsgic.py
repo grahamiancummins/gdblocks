@@ -1,4 +1,3 @@
-
 ## Copyright (C) 2005-2006 Graham I Cummins
 ## This program is free software; you can redistribute it and/or modify it under 
 ## the terms of the GNU General Public License as published by the Free Software 
@@ -18,15 +17,15 @@ portforsgic.so in ./build/lib.arch-id/'''
 from distutils.core import setup, Extension
 import sys, os, numpy
 
-includen=[numpy.get_include()]
+includen = [numpy.get_include()]
 
 module1 = Extension('portforsgic',
-					include_dirs=includen,
-                    sources = ['portforsgic.c'])
+                    include_dirs=includen,
+                    sources=['portforsgic.c'])
 
-setup (name = 'portforsgic',
-       version = '1.0',
-       description = 'Functions for comparing spike trains',
-       ext_modules = [module1])
+setup(name='portforsgic',
+      version='1.0',
+      description='Functions for comparing spike trains',
+      ext_modules=[module1])
 	   
 

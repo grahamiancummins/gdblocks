@@ -26,58 +26,63 @@ import Crypto.Cipher.AES as AES
 import Crypto.Hash.SHA as SHA
 import gicdat.control
 
-def _key(pw):
-	h = SHA.new()
-	h.update(pw)
-	return h.digest()[:16]
 
-def _pad(s, l = 16, c = ' '):
-	np = l - divmod(len(s), l)[1]
-	return s + c*np
+def _key(pw):
+    h = SHA.new()
+    h.update(pw)
+    return h.digest()[:16]
+
+
+def _pad(s, l=16, c=' '):
+    np = l - divmod(len(s), l)[1]
+    return s + c * np
+
 
 def enc(s, pw):
-	e = AES.new(_key(pw))
-	return e.encrypt(_pad(s))
+    e = AES.new(_key(pw))
+    return e.encrypt(_pad(s))
+
 
 def dec(s, pw):
-	e = AES.new(_key(pw))
-	return e.decrypt(s).rstrip(' ')
+    e = AES.new(_key(pw))
+    return e.decrypt(s).rstrip(' ')
 
 
 class GicParse(Parser):
-	'''	
-	This parser handles gicdat's internal file format, which is a form of zip
-	file
+    '''
+    This parser handles gicdat's internal file format, which is a form of zip
+    file
 
-	'''
-	
-	canread = ('application/com.symbolscope.gicdat.enc',)
-	canwrite = ('application/com.symbolscope.gicdat.enc',)
-	extensions = {'gdenc':'application/com.symbolscope.gicdat.enc'}
+    '''
 
-	def read(self, stream, filetype, **kw):
-		if 'password' in kw:
-			pw = kw['password']
-		else:
-			pw = gicdat.control.asksecret('password?')
-		z = zipfile.ZipFile(stream, 'r')
-		rdat = z.read('data.raw')
-		rdat = dec(rdat, pw)
-		dd = eval(z.read('doc.py'))
-		dd = dec(dd, pw)
-		doc = gicdat.enc.dict2doc(dd, rdat, False)
-		return (doc, None)
-	
-	def write(self, d, stream, filetype, **kw):
-		if 'password' in kw:
-			pw = kw['password']
-		else:
-			pw = gicdat.control.asksecret('password?')
-		z = zipfile.ZipFile(stream, 'w')
-		dstr = StringIO.StringIO()
-		d = gicdat.enc.doc2dict(d, dstr)
-		z.writestr('doc.py', enc(repr(d), pw))
-		z.writestr('data.raw', enc(dstr.getvalue(), pw))
-		dstr.close()	
+    canread = ('application/com.symbolscope.gicdat.enc',)
+    canwrite = ('application/com.symbolscope.gicdat.enc',)
+    extensions = {'gdenc': 'application/com.symbolscope.gicdat.enc'}
+
+    def read(self, stream, filetype, **kw):
+        if 'password' in kw:
+            pw = kw['password']
+        else:
+            pw = gicdat.control.asksecret('password?')
+        z = zipfile.ZipFile(stream, 'r')
+        rdat = z.read('data.raw')
+        rdat = dec(rdat, pw)
+        dd = eval(z.read('doc.py'))
+        dd = dec(dd, pw)
+        doc = gicdat.enc.dict2doc(dd, rdat, False)
+        return (doc, None)
+
+    def write(self, d, stream, filetype, **kw):
+        if 'password' in kw:
+            pw = kw['password']
+        else:
+            pw = gicdat.control.asksecret('password?')
+        z = zipfile.ZipFile(stream, 'w')
+        dstr = StringIO.StringIO()
+        d = gicdat.enc.doc2dict(d, dstr)
+        z.writestr('doc.py', enc(repr(d), pw))
+        z.writestr('data.raw', enc(dstr.getvalue(), pw))
+        dstr.close()
+
 
 gic_p = GicParse()
